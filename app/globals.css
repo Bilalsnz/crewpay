@@ -1,0 +1,66 @@
+@import "tailwindcss";
+
+@theme {
+  --color-brand-from: #5b6cff;
+  --color-brand-to: #2ee6a6;
+
+  --color-ink: #101828;
+  --color-muted: #5b6478;
+  --color-line: #e6e8f0;
+
+  /* Crew money is blue, the holdback is amber, a returned holdback is mint.
+     These three carry meaning, so they are named rather than picked inline. */
+  --color-crew: #2563ff;
+  --color-crew-soft: #eef3ff;
+  --color-holdback: #b45309;
+  --color-holdback-soft: #fff6e6;
+  --color-mint: #0f9d70;
+  --color-mint-soft: #e7f8f1;
+  --color-danger: #b42318;
+  --color-danger-soft: #fdeceb;
+
+  --radius-card: 16px;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  min-height: 100dvh;
+  background: linear-gradient(160deg, var(--color-brand-from) 0%, var(--color-brand-to) 100%);
+  background-attachment: fixed;
+  color: var(--color-ink);
+}
+
+/* Numeric columns and money should never jitter as values change. */
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* The gradient pay button, shared by every payment action. */
+.pay-button {
+  background: linear-gradient(90deg, var(--color-brand-from) 0%, var(--color-brand-to) 100%);
+  color: #fff;
+  box-shadow: 0 6px 18px -6px rgb(91 108 255 / 0.7);
+}
+.pay-button:disabled {
+  background: #c8cddd;
+  box-shadow: none;
+  color: #fff;
+}
+
+input,
+select,
+button,
+textarea {
+  font: inherit;
+}
+
+input:focus-visible,
+select:focus-visible,
+button:focus-visible,
+a:focus-visible {
+  outline: 2px solid var(--color-brand-from);
+  outline-offset: 2px;
+}

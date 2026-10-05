@@ -1,0 +1,44 @@
+{
+  "_note": "Every value here was read from the live chains during reconnaissance on 2026-10-05, not copied from documentation. Change nothing here without re-probing.",
+  "_verified": "2026-10-05",
+  "networks": {
+    "testnet": {
+      "key": "testnet",
+      "label": "Tempo Moderato Testnet",
+      "shortLabel": "Testnet",
+      "chainId": 42431,
+      "chainIdHex": "0xa5bf",
+      "rpcUrl": "https://rpc.moderato.tempo.xyz",
+      "explorerUrl": "https://explore.testnet.tempo.xyz",
+      "pathUsd": "0x20c0000000000000000000000000000000000000",
+      "pathUsdName": "PathUSD",
+      "pathUsdSymbol": "PathUSD",
+      "pathUsdDecimals": 6,
+      "permitDomainVersion": "1",
+      "hasFaucet": true,
+      "faucetMethod": "tempo_fundAddress",
+      "faucetAmount": "1000000",
+      "gasToken": "pathUSD",
+      "isTestnet": true
+    },
+    "mainnet": {
+      "key": "mainnet",
+      "label": "Tempo",
+      "shortLabel": "Mainnet",
+      "chainId": 4217,
+      "chainIdHex": "0x1079",
+      "rpcUrl": "https://rpc.tempo.xyz",
+      "explorerUrl": "https://explore.tempo.xyz",
+      "pathUsd": "0x20c0000000000000000000000000000000000000",
+      "pathUsdName": "PathUSD",
+      "pathUsdSymbol": "PathUSD",
+      "pathUsdDecimals": 6,
+      "permitDomainVersion": "1",
+      "hasFaucet": false,
+      "faucetMethod": null,
+      "faucetAmount": null,
+      "gasToken": "pathUSD",
+      "isTestnet": false
+    }
+  }
+}

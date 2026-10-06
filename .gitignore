@@ -9,6 +9,7 @@ build/
 .env.*.local
 
 *.log
+.install-tmp.tgz
 .DS_Store
 .vercel
 next-env.d.ts

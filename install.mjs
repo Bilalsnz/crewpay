@@ -1,7 +1,11 @@
 import { execSync } from "node:child_process";
 import { mkdirSync, rmSync } from "node:fs";
+import { dirname, join } from "node:path";
 // Override with NM=… to install into another project; defaults to this one.
 const NM = process.env.NM || "/public/crewpay/node_modules";
+// Keep the download beside the target rather than in /tmp: on this device /tmp
+// comes and goes, and a vanished tmpdir fails the whole install midway.
+const TARBALL = join(dirname(NM), ".install-tmp.tgz");
 const reg = async (n) => {
   const res = await fetch("https://registry.npmjs.org/" + n.replace("/", "%2f"));
   if (res.status === 404) return null; // unpublished or private — the caller decides
@@ -126,7 +130,7 @@ export async function install(name, want, seen = new Set(), quiet = false) {
   } else {
     rmSync(dir, { recursive: true, force: true });
     mkdirSync(dir, { recursive: true });
-    execSync(`curl -sL -o /tmp/p.tgz "${meta.versions[ver].dist.tarball}" && tar xzf /tmp/p.tgz -C "${dir}" --strip-components=1`, { shell: "/bin/bash" });
+    execSync(`curl -fsSL -o "${TARBALL}" "${meta.versions[ver].dist.tarball}" && tar xzf "${TARBALL}" -C "${dir}" --strip-components=1`, { shell: "/bin/bash" });
     if (!quiet) console.log(`  ${name}@${ver}`);
   }
   const deps = { ...(meta.versions[ver].dependencies || {}) };

@@ -1,20 +1,21 @@
-# CrewPay Zero — the same split, no contract
+# FlowPay Pay — the same split, no contract
 
-This is a prototype on the `zero-contract` branch. `main` is untouched: the
-contract version, its tests and its deployment are exactly as they were.
+This documents the Pay product on the `zero-contract` branch. `main` is
+untouched: the contract version, its tests and its deployment are exactly as
+they were. See [CONTRACT-VERSION.md](CONTRACT-VERSION.md).
 
-The idea is to answer one question honestly: **can CrewPay work on Tempo using
-only what is already deployed there, with no CrewPay contract at all?**
+The idea is to answer one question honestly: **can the split work on Tempo using
+only what is already deployed there, with no FlowPay contract at all?**
 
 It can — for most of it. Here is precisely what survives and what does not.
 
 ## What it does
 
-One client payment in pathUSD, split across up to four crew wallets at
+One client payment in pathUSD, split across up to four recipient wallets at
 percentages fixed in the link, settled in **one transaction** that the client
 signs once.
 
-There is no CrewPay contract. The transaction goes to Multicall3 —
+There is no FlowPay contract. The transaction goes to Multicall3 —
 `0xcA11bde05977b3631167028862bE2a173976CA11`, already deployed on Tempo — which
 runs these calls in order and reverts the whole thing if any one fails:
 
@@ -106,7 +107,7 @@ node test/zero-contract.test.mjs --network=testnet   # prove the split on-chain
 node node_modules/next/dist/bin/next build           # local tooling note, see below
 ```
 
-Create a job at `/zero`; the payment page is `/zero/testnet?…`.
+Create a payment at `/zero/create`; the payment page is `/zero/testnet?…`.
 
 Both routes refuse to do anything on mainnet from this branch — nothing here
 has been run against Tempo Mainnet, and no mainnet transaction has been produced.

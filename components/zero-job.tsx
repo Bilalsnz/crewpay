@@ -6,6 +6,7 @@ import { useAccount, usePublicClient, useSignTypedData, useSwitchChain, useWalle
 import { useNetwork } from "@/components/network-provider";
 import { Shell, useFollowLinkNetwork } from "@/components/shell";
 import { Button, Card, ExternalLink, Label, Note, Row, Spinner } from "@/components/ui";
+import { FOOTER_PAY_JOB } from "@/lib/brand";
 import { NETWORKS, explorerTx, type NetworkKey } from "@/lib/networks";
 import { PERMIT_TYPES, resolvePermitDomain } from "@/lib/permit";
 import { ensureChain, isUserRejection, providerForConnector, errorMessage, SWITCH_HELP } from "@/lib/wallet";
@@ -67,8 +68,38 @@ export function ZeroJob({ networkKey, query, amount, crew }: {
   const memo = useMemo(() => memoFor(canonicalTerms(query)), [query]);
   const crewTotal = terms.split.crewTotal;
 
+  /**
+   * The reason the pay button cannot run, in words, or null when it can.
+   *
+   * This exists because the old guard was `if (!walletClient || !client ||
+   * account) return;` — a button that did absolutely nothing when the wallet
+   * was connected but its provider had not come up. A silent return from a
+   * payment button is the worst failure mode this app has: the client taps,
+   * nothing happens, and they cannot tell whether they paid.
+   */
+  const blocked = !isConnected
+    ? "Connect your wallet first, then pay."
+    : !walletClient
+      ? `Your wallet is connected but FlowPay cannot use it here. If it is on another network, switch it to ${config.label} — otherwise reload this page and reconnect.`
+      : null;
+
   const pay = useCallback(async () => {
-    if (!walletClient || !client || !account) return;
+    // Belt and braces: the button below says this too, and pressing it anyway
+    // must never be a no-op.
+    if (!account) {
+      setError("Connect your wallet first, then pay.");
+      return;
+    }
+    if (!client) {
+      setError(`FlowPay could not reach ${config.label}. Check your connection and reload the page.`);
+      return;
+    }
+    if (!walletClient) {
+      setError(
+        `Your wallet provider is unavailable in this browser. Open this page inside your wallet app — the Connect button at the top of the page lists the wallets FlowPay supports — or install a wallet and reload.`,
+      );
+      return;
+    }
     setError(null);
     setBusy("pay");
     try {
@@ -147,9 +178,9 @@ export function ZeroJob({ networkKey, query, amount, crew }: {
   }, [account, client, config, connector, crew, crewTotal, memo, signTypedDataAsync, switchChainAsync, terms.split.amounts, walletClient]);
 
   return (
-    <Shell back="/zero" footer="CrewPay Zero · settled by Multicall3 on Tempo · no CrewPay contract">
+    <Shell back="/zero" footer={FOOTER_PAY_JOB}>
       <Card edge="none" className="bg-white/95">
-        <Label>Job</Label>
+        <Label>Payment</Label>
         <h1 className="pt-1 text-2xl font-bold text-ink">${formatUsdFixed(terms.total)}</h1>
         <p className="pt-1 text-sm text-muted">
           {crew.length} crew {crew.length === 1 ? "wallet" : "wallets"} · {config.label} · paid in {config.pathUsdSymbol}
@@ -174,14 +205,15 @@ export function ZeroJob({ networkKey, query, amount, crew }: {
         </div>
         <div className="pt-2">
           <Row label="To the crew, now">${formatUsdFixed(terms.split.crewTotal)}</Row>
-          <Row label="Stays with the client">${formatUsdFixed(terms.split.retained)}</Row>
+          <Row label="Stays with you">${formatUsdFixed(terms.split.retained)}</Row>
         </div>
       </Card>
 
       <Note tone="warn">
-        This version has no escrow. The crew is paid the moment you sign and the remaining $
-        {formatUsdFixed(terms.split.retained)} stays in your wallet. There is no accept step and no deadline return,
-        because nothing is being held.
+        Paid in full, immediately. The crew receives its share inside the same transaction that takes your{" "}
+        {config.pathUsdSymbol}, and the remaining ${formatUsdFixed(terms.split.retained)} never leaves your wallet.
+        FlowPay holds nothing after this transaction confirms, so there is nothing left for anyone to release, accept
+        or send back.
       </Note>
 
       {receipt ? (
@@ -217,7 +249,7 @@ export function ZeroJob({ networkKey, query, amount, crew }: {
         </Card>
       ) : (
         <Card edge="none">
-          <Label>Payment</Label>
+          <Label>Pay</Label>
           <div className="pt-1">
             <Row label="Network">{config.label}</Row>
             <Row label="Token">{config.pathUsdSymbol}</Row>
@@ -227,13 +259,21 @@ export function ZeroJob({ networkKey, query, amount, crew }: {
           </div>
           <div className="pt-3">
             {!isConnected ? (
-              <p className="text-sm text-muted">Connect the wallet that will pay, then pay in one tap.</p>
+              <p className="text-sm text-muted">
+                Use <span className="font-semibold text-ink">Connect</span> at the top of this page to connect the
+                wallet that will pay, then come back and pay in one tap.
+              </p>
             ) : (
               <Button variant="pay" full disabled={Boolean(busy)} onClick={pay}>
                 {busy === "pay" ? "Paying…" : `Pay $${formatUsdFixed(terms.total)}`}
               </Button>
             )}
           </div>
+          {blocked && isConnected ? (
+            <div className="pt-3">
+              <Note tone="warn">{blocked}</Note>
+            </div>
+          ) : null}
           {stage ? <div className="pt-3"><Spinner label={stage} /></div> : null}
         </Card>
       )}
@@ -242,7 +282,7 @@ export function ZeroJob({ networkKey, query, amount, crew }: {
 
       <p className="px-1 text-xs text-white/85">
         The whole split is one call to Tempo&apos;s existing Multicall3 deployment. If any single transfer fails, the
-        entire transaction is rolled back and nothing moves. No CrewPay contract is involved, and none was deployed.
+        entire transaction is rolled back and nothing moves. No FlowPay contract is involved, and none was deployed.
       </p>
     </Shell>
   );

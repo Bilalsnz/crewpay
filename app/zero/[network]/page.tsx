@@ -40,8 +40,8 @@ export default async function ZeroJobRoute({
             Nothing was sent and nothing is wrong with your wallet — the link itself is incomplete or inconsistent.
           </p>
         </section>
-        <Link href="/zero" className="text-sm font-semibold text-white underline underline-offset-2">
-          Start a new job
+        <Link href="/zero/create" className="text-sm font-semibold text-white underline underline-offset-2">
+          Create a new payment
         </Link>
       </main>
     );

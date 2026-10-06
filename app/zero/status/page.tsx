@@ -1,13 +1,14 @@
 import { ZeroStatus } from "@/components/zero-status";
+import { BRAND } from "@/lib/brand";
 import { DEFAULT_NETWORK, isNetworkKey } from "@/lib/networks";
 
 /**
- * There is no job to look up in this version — nothing is written down, so a
- * status page cannot report on a job. What it can do is read a transaction off
+ * There is no payment to look up in this design — nothing is written down, so a
+ * status page cannot report on one. What it can do is read a transaction off
  * the chain and show what that transaction actually paid, which is the only
  * record this design produces. `?tx=` drives that; the rest is explanation.
  */
-export const metadata = { title: "CrewPay Zero — check a settlement" };
+export const metadata = { title: `Check a settlement | ${BRAND}` };
 
 export default async function StatusRoute({
   searchParams,

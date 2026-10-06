@@ -1,14 +1,40 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { usePathname } from "next/navigation";
+import { useEffect, useState, type ReactNode } from "react";
 import { useAccount, useConnect, useDisconnect } from "wagmi";
+import { BRAND } from "@/lib/brand";
 import { shortAddress } from "@/lib/format";
 import { NETWORKS, type NetworkKey } from "@/lib/networks";
 import { deepLink, isMobile, isUserRejection } from "@/lib/wallet";
 import { installedWallets, WALLET_LABEL, WALLET_IDS, type WalletId } from "@/lib/wagmi";
 import { useNetwork } from "./network-provider";
 import { Button, Note } from "./ui";
+
+/**
+ * Pay and Earn, in the bar, on every screen.
+ *
+ * `Pay` points at `/zero/create` — the zero-contract creation flow that
+ * actually works on this branch. It used to be possible to reach the contract
+ * `/create` screen from the chrome, which is a screen this branch cannot run:
+ * no contract address, no contract. That path is gone from the navigation.
+ */
+function NavPill({ href, match, children }: { href: string; match: string; children: ReactNode }) {
+  const pathname = usePathname();
+  const active = pathname === match || pathname.startsWith(`${match}/`);
+  return (
+    <Link
+      href={href}
+      aria-current={active ? "page" : undefined}
+      className={`rounded-full px-3 py-1 text-xs font-bold uppercase tracking-wide transition ${
+        active ? "bg-white text-ink" : "text-white/90"
+      }`}
+    >
+      {children}
+    </Link>
+  );
+}
 
 function NetworkSwitch() {
   const { network, setNetwork } = useNetwork();
@@ -144,24 +170,38 @@ export function AppHeader({ back }: { back?: string }) {
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
 
+  // The brand and the wallet control share the top row; the two products and
+  // the network switch share the second. At 360px that is the only arrangement
+  // where nothing wraps into an unreadable stack.
   return (
-    <header className="mb-5 flex items-center justify-between gap-3">
-      <div className="flex items-center gap-3">
-        {back ? (
-          <Link href={back} className="text-sm font-semibold text-white/90">
-            ‹ Back
+    <header className="mb-5">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-3">
+          {back ? (
+            <Link href={back} className="shrink-0 text-sm font-semibold text-white/90">
+              ‹ Back
+            </Link>
+          ) : null}
+          <Link href="/" className="truncate text-lg font-black tracking-tight text-white">
+            {BRAND}
           </Link>
-        ) : null}
-        <Link href="/" className="text-lg font-black tracking-tight text-white">
-          CrewPay
-        </Link>
-      </div>
-      <div className="flex items-center gap-2">
-        <NetworkSwitch />
+        </div>
         {/* Wallet detection reads `window`, so it only renders after mount —
             otherwise the server and client markup would disagree. */}
         {mounted ? <ConnectControl /> : null}
       </div>
+
+      <nav className="flex items-center justify-between gap-2 pt-3" aria-label={BRAND}>
+        <div className="flex rounded-full bg-white/20 p-0.5">
+          <NavPill href="/zero/create" match="/zero">
+            Pay
+          </NavPill>
+          <NavPill href="/earn" match="/earn">
+            Earn
+          </NavPill>
+        </div>
+        <NetworkSwitch />
+      </nav>
     </header>
   );
 }

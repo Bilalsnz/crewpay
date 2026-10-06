@@ -2,18 +2,19 @@ import { redirect } from "next/navigation";
 
 import { Shell } from "@/components/shell";
 import { Card, Label, LinkButton, Note } from "@/components/ui";
+import { BRAND, FOOTER_PAY_CREATE } from "@/lib/brand";
 import { DEFAULT_NETWORK, isNetworkKey } from "@/lib/networks";
 
 /**
  * `/zero/pay` on its own has nothing to pay.
  *
- * In this version the terms — amount, crew, percentages — travel in the link,
- * and there is no store to look a job up in. So a link that carries its terms
- * is forwarded to the network page that can render it, and a bare `/zero/pay`
- * says plainly that a payment needs a link instead of showing a form with
- * nothing behind it.
+ * In this design the terms — amount, crew, percentages — travel in the link,
+ * and there is no store to look a payment up in. So a link that carries its
+ * terms is forwarded to the network page that can render it, and a bare
+ * `/zero/pay` says plainly that a payment needs a link instead of showing a
+ * form with nothing behind it.
  */
-export const metadata = { title: "CrewPay Zero — pay a job" };
+export const metadata = { title: `Pay | ${BRAND}` };
 
 export default async function PayRoute({
   searchParams,
@@ -35,24 +36,24 @@ export default async function PayRoute({
   }
 
   return (
-    <Shell back="/zero" footer="CrewPay Zero · settled by Multicall3 on Tempo · no CrewPay contract">
+    <Shell back="/zero" footer={FOOTER_PAY_CREATE}>
       <Card edge="holdback">
         <Label>Nothing to pay here yet</Label>
         <p className="pt-2 text-sm text-ink">
-          A payment needs its terms. In this version the crew addresses and their percentages <em>are</em> the link —
-          nothing is stored, so there is nothing to look up and nothing to open without one.
+          A payment needs its terms. Here the crew addresses and their percentages <em>are</em> the link — nothing is
+          stored, so there is nothing to look up and nothing to open without one.
         </p>
       </Card>
 
       <Card edge="none">
         <Label>What to do</Label>
         <p className="pt-2 text-sm text-ink">
-          Open the payment link you were sent. If you are the one paying the crew, create a job and send that link to
-          the client.
+          Open the payment link you were sent. If you are the one paying the crew, create a payment and send that link
+          to the client.
         </p>
         <div className="pt-3">
-          <LinkButton href="/zero" variant="plain">
-            Create a job
+          <LinkButton href="/zero/create" variant="plain">
+            Create a payment
           </LinkButton>
         </div>
       </Card>

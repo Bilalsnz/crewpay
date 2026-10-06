@@ -1,26 +1,66 @@
-import { ZeroCreate } from "@/components/zero-create";
+import { Shell } from "@/components/shell";
+import { Card, Label, LinkButton } from "@/components/ui";
+import { FOOTER_HOME, META_DESCRIPTION, META_TITLE, POSITIONING, SUPPORTING } from "@/lib/brand";
 
 /**
- * The front door of THIS BRANCH is the zero-contract flow.
+ * The front door. Two products, two doors, and nothing else to click.
  *
- * It used to be the contract version's home screen, whose "Create a job" button
- * pointed at `/create` — the contract create screen. That screen needs
- * `NEXT_PUBLIC_CREWPAY_ADDRESS_TESTNET` and has no contract to talk to on this
- * branch, so the natural path through the deployed app walked out of the
- * zero-contract flow and into "CrewPay is not deployed in this build". Nothing
- * was wrong with `/zero/create`; the route into it was.
- *
- * The contract version is untouched. Its screens are exactly as they were and
- * still live at `/create` and `/job/*` — `components/home-screen.tsx` is left
- * in place, unreferenced, so reverting this one file restores the old landing
- * and nothing else has to change.
+ * The trap this page has fallen into before is worth restating, because the
+ * symptom is always the same: a button here that leads to the contract
+ * version's screens. This branch deploys no contract, so `/create` and `/job/*`
+ * cannot run — they guard on `NEXT_PUBLIC_CREWPAY_ADDRESS_TESTNET` and refuse.
+ * Both Pay links below go to `/zero/create`, which needs no address, no
+ * contract and no configuration.
  */
 export const metadata = {
-  title: "CrewPay Zero — split a payment without a contract",
-  description:
-    "One payment in pathUSD splits across up to four crew wallets in a single transaction to Tempo's already-deployed Multicall3. No CrewPay contract is deployed, and none is needed.",
+  title: META_TITLE,
+  description: META_DESCRIPTION,
 };
 
 export default function Page() {
-  return <ZeroCreate />;
+  return (
+    <Shell footer={FOOTER_HOME}>
+      <section className="pt-2">
+        <h1 className="text-[2rem] font-black leading-[1.1] tracking-tight text-white sm:text-4xl">
+          Move money.
+          <br />
+          Make it work.
+        </h1>
+        <p className="pt-3 text-base leading-relaxed text-white/90">{SUPPORTING}</p>
+      </section>
+
+      <div className="grid grid-cols-2 gap-2">
+        <LinkButton href="/zero/create" variant="pay" full>
+          Pay
+        </LinkButton>
+        <LinkButton href="/earn" variant="ghost" full>
+          Earn
+        </LinkButton>
+      </div>
+
+      <Card edge="crew">
+        <Label>Pay</Label>
+        <h2 className="pt-1 text-xl font-bold leading-snug text-ink">Split one payment between your crew.</h2>
+        <p className="pt-2 text-sm text-muted">One transaction. Up to 4 recipients. Tempo pathUSD.</p>
+        <div className="pt-3">
+          <LinkButton href="/zero/create" variant="pay" full>
+            Pay →
+          </LinkButton>
+        </div>
+      </Card>
+
+      <Card edge="mint">
+        <Label>Earn</Label>
+        <h2 className="pt-1 text-xl font-bold leading-snug text-ink">Explore stablecoin yield opportunities.</h2>
+        <p className="pt-2 text-sm text-muted">Compare networks, assets and strategies.</p>
+        <div className="pt-3">
+          <LinkButton href="/earn" variant="plain" full>
+            Explore yield →
+          </LinkButton>
+        </div>
+      </Card>
+
+      <p className="px-1 text-xs leading-relaxed text-white/85">{POSITIONING}</p>
+    </Shell>
+  );
 }

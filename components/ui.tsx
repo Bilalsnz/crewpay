@@ -111,10 +111,24 @@ export function Note({ children, tone = "plain" }: { children: ReactNode; tone?:
   return <p className={`rounded-xl px-3 py-2 text-sm ${tones[tone]}`}>{children}</p>;
 }
 
-export function LinkButton({ href, children, variant = "ghost" }: { href: string; children: ReactNode; variant?: "ghost" | "plain" }) {
-  const styles = variant === "plain" ? "bg-ink text-white" : "border border-line bg-white text-ink";
+export function LinkButton({
+  href,
+  children,
+  variant = "ghost",
+  full,
+}: {
+  href: string;
+  children: ReactNode;
+  variant?: "ghost" | "plain" | "pay";
+  full?: boolean;
+}) {
+  const styles =
+    variant === "plain" ? "bg-ink text-white" : variant === "pay" ? "pay-button" : "border border-line bg-white text-ink";
   return (
-    <Link href={href} className={`inline-flex items-center justify-center rounded-xl px-4 py-3 text-sm font-semibold ${styles}`}>
+    <Link
+      href={href}
+      className={`inline-flex items-center justify-center rounded-xl px-4 py-3 text-sm font-semibold ${styles} ${full ? "w-full" : ""}`}
+    >
       {children}
     </Link>
   );

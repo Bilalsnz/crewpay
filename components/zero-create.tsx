@@ -6,13 +6,14 @@ import { useMemo, useState } from "react";
 import { useNetwork } from "@/components/network-provider";
 import { Shell } from "@/components/shell";
 import { Button, Card, Label, Note, Row } from "@/components/ui";
+import { FOOTER_PAY_CREATE } from "@/lib/brand";
 import { NETWORKS } from "@/lib/networks";
 import { HOLDBACK_BPS, MAX_CREW, encodeTerms, formatUsdFixed, parseUsd, splitCrew } from "@/lib/zerocon.mjs";
 
 /**
- * The create screen. There is no contract to call and nothing to deploy, so
- * "creating a job" is just writing the terms down — and the link IS the record.
- * That is the whole trade of this version: nothing is stored anywhere, so
+ * The Pay create screen. There is no contract to call and nothing to deploy, so
+ * making a payment is just writing the terms down — and the link IS the record.
+ * That is the whole trade of this design: nothing is stored anywhere, so
  * nothing can be edited behind anyone's back, and nothing can be enforced either.
  */
 
@@ -72,10 +73,10 @@ export function ZeroCreate() {
     setRows((current) => current.map((row, i) => (i === index ? { ...row, ...patch } : row)));
 
   return (
-    <Shell footer="CrewPay Zero · settled by Multicall3 on Tempo · no CrewPay contract">
+    <Shell footer={FOOTER_PAY_CREATE}>
       <Card edge="none" className="bg-white/95">
-        <Label>Zero-contract version</Label>
-        <h1 className="pt-1 text-lg font-bold text-ink">Split a payment in one transaction</h1>
+        <Label>Pay</Label>
+        <h1 className="pt-1 text-lg font-bold text-ink">Split one payment between your crew</h1>
         <p className="pt-2 text-sm text-muted">
           One payment in {config.pathUsdSymbol}, split across up to {MAX_CREW} crew wallets at percentages fixed in
           the link. No contract is deployed — the whole split is one transaction to the Multicall3 deployment Tempo
@@ -87,7 +88,7 @@ export function ZeroCreate() {
         <Label>Job</Label>
         <div className="pt-2">
           <label className="block text-sm text-muted" htmlFor="amount">
-            Amount the client pays
+            Amount to pay
           </label>
           <div className="flex items-center gap-2 pt-1">
             <span className="text-lg font-bold text-ink">$</span>
@@ -167,12 +168,13 @@ export function ZeroCreate() {
             ))}
           </div>
           <div className="pt-2">
-            <Row label="To the crew, in the payment transaction">${formatUsdFixed(draft.split.crewTotal)}</Row>
-            <Row label="Stays with the client">${formatUsdFixed(draft.split.retained)}</Row>
+            <Row label="To the crew, now">${formatUsdFixed(draft.split.crewTotal)}</Row>
+            <Row label="Stays with you">${formatUsdFixed(draft.split.retained)}</Row>
           </div>
           <p className="pt-2 text-xs text-muted">
-            The client keeps the remaining {Number(HOLDBACK_BPS) / 100}% and sends only the crew portion. Nothing
-            holds it — there is no contract in this version to hold it.
+            The client keeps the remaining {Number(HOLDBACK_BPS) / 100}% and sends only the crew portion. The crew
+            portion moves in the payment transaction itself — nothing holds it afterwards, because there is no FlowPay
+            contract in this design to hold anything.
           </p>
         </Card>
       ) : (

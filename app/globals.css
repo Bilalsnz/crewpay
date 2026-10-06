@@ -50,6 +50,18 @@ body {
   color: #fff;
 }
 
+/* Filter rows scroll sideways on a phone. The scrollbar would sit on top of
+   the chips and eat 8px of a 360px screen, so it is hidden — the row still
+   scrolls by touch, by trackpad and by keyboard, and the chips are cut off at
+   the edge so it is visible that there is more to the right. */
+.no-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
 input,
 select,
 button,

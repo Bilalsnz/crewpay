@@ -5,6 +5,7 @@ import { createPublicClient, http } from "viem";
 
 import { Shell } from "@/components/shell";
 import { Button, Card, ExternalLink, Label, Note, Row, Spinner } from "@/components/ui";
+import { FOOTER_PAY_JOB } from "@/lib/brand";
 import { NETWORKS, explorerTx, type NetworkKey } from "@/lib/networks";
 import { decodeMemoTransfers } from "@/lib/multicall.mjs";
 import { formatUsdFixed } from "@/lib/zerocon.mjs";
@@ -100,7 +101,7 @@ export function ZeroStatus({ initialTx, initialNetwork }: { initialTx: string; i
   }, [initialTx, initialNetwork, look]);
 
   return (
-    <Shell back="/zero" footer="CrewPay Zero · settled by Multicall3 on Tempo · no CrewPay contract">
+    <Shell back="/zero" footer={FOOTER_PAY_JOB}>
       <Card edge="holdback">
         <Label>This version keeps no record</Label>
         <p className="pt-2 text-sm text-ink">
@@ -156,7 +157,7 @@ export function ZeroStatus({ initialTx, initialNetwork }: { initialTx: string; i
           <p className="pt-2 text-sm text-ink">
             {outcome.reverted
               ? "This transaction reverted, so nothing moved."
-              : "This transaction went through, but it carries no memo-bearing pathUSD transfer — so it is not a CrewPay Zero settlement."}
+              : "This transaction went through, but it carries no memo-bearing pathUSD transfer — so it is not a FlowPay settlement."}
           </p>
           <p className="pt-2 text-xs text-muted">
             Only <code>transferFromWithMemo</code> logs are counted. A plain transfer carries no memo, and Tempo&apos;s

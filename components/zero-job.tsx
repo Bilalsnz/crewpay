@@ -4,6 +4,7 @@ import { useCallback, useMemo, useState } from "react";
 import { useAccount, usePublicClient, useSignTypedData, useSwitchChain, useWalletClient } from "wagmi";
 
 import { useNetwork } from "@/components/network-provider";
+import { TempoGuard } from "@/components/chain-guard";
 import { Shell, useFollowLinkNetwork } from "@/components/shell";
 import { Button, Card, ExternalLink, Label, Note, Row, Spinner } from "@/components/ui";
 import { FOOTER_PAY_JOB } from "@/lib/brand";
@@ -80,7 +81,7 @@ export function ZeroJob({ networkKey, query, amount, crew }: {
   const blocked = !isConnected
     ? "Connect your wallet first, then pay."
     : !walletClient
-      ? `Your wallet is connected but FlowPay cannot use it here. If it is on another network, switch it to ${config.label} — otherwise reload this page and reconnect.`
+      ? `Your wallet is connected but has not handed FlowPay a signer for ${config.label} yet. If it is showing a network prompt, approve it — FlowPay asks for the switch itself and this button clears as soon as the wallet is on ${config.label}. If no prompt appears, reconnect from the button at the top of this page.`
       : null;
 
   const pay = useCallback(async () => {
@@ -179,6 +180,10 @@ export function ZeroJob({ networkKey, query, amount, crew }: {
 
   return (
     <Shell back="/zero" footer={FOOTER_PAY_JOB}>
+      {/* Asks the wallet to move to Moderato the moment it connects, so the
+          blocked state below is a fallback rather than the normal path. */}
+      <TempoGuard />
+
       <Card edge="none" className="bg-white/95">
         <Label>Payment</Label>
         <h1 className="pt-1 text-2xl font-bold text-ink">${formatUsdFixed(terms.total)}</h1>

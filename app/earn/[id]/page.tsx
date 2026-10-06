@@ -52,9 +52,13 @@ export default async function OpportunityRoute({ params }: { params: Promise<{ i
   // An explorer link exists only where the app already knows the explorer —
   // Tempo, from networks.json. Inventing URLs for the other chains would be
   // another unverified claim on a page whose whole point is not making them.
+  //
+  // Mainnet, not testnet: a Tempo entry in the Earn registry is about Tempo
+  // mainnet (4217). Pay settles on Moderato testnet, which is a different
+  // network, and an address that exists on one does not exist on the other.
   const explorer =
     item.contractAddress && item.chain === "tempo"
-      ? explorerAddress(NETWORKS.testnet, item.contractAddress)
+      ? explorerAddress(NETWORKS.mainnet, item.contractAddress)
       : null;
 
   return (

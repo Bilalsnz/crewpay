@@ -3,9 +3,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { useAccount, usePublicClient } from "wagmi";
 
-import { useNetwork } from "@/components/network-provider";
+import { AiAnalysis } from "@/components/ai-analysis";
 import { Shell } from "@/components/shell";
-import { Card, Label, LinkButton, Note, Row } from "@/components/ui";
+import { Card, ExternalLink, Label, LinkButton, Note, Row } from "@/components/ui";
 import { FOOTER_EARN } from "@/lib/brand";
 import {
   ASSETS,
@@ -21,17 +21,34 @@ import {
   type Opportunity,
   type OpportunityStatus,
 } from "@/lib/earn";
-import { NETWORKS } from "@/lib/networks";
+import { NETWORKS, PAY_NETWORK } from "@/lib/networks";
 import { formatUsdFixed } from "@/lib/zerocon.mjs";
+import {
+  LIVE_DATA_NOTE,
+  LIVE_SOURCE,
+  LIVE_SOURCE_ATTRIBUTION,
+  formatFetchedAt,
+  formatLiveApy,
+  formatLiveTvl,
+  type LiveOpportunity,
+  type LiveResult,
+} from "@/lib/yields";
 
 /**
  * Earn.
  *
- * The one thing on this page that reads from a chain is the portfolio balance,
- * and it reads pathUSD on Tempo — the asset FlowPay actually settles in, on the
- * network it actually settles on. Everything else is a registry lookup. That
- * division is deliberate: a page that shows a real balance next to invented
- * APYs teaches people to trust both equally.
+ * Two different things are on this page and they are kept visibly apart.
+ *
+ *   - The balance card reads pathUSD on Tempo Moderato TESTNET, because that is
+ *     the network FlowPay Pay settles on and therefore where this wallet's
+ *     pathUSD actually is.
+ *   - The live section reads real pools on Tempo MAINNET, from a public source,
+ *     because that is where the yield is. Different network, different money,
+ *     labelled differently in every row.
+ *
+ * The one thing that is not here is an invented number. Every figure on this
+ * page is either read from a chain, read from the source, or printed as
+ * unavailable — and the registry at the bottom, which has neither, says so.
  *
  * Browsing needs no wallet. Connecting adds one number.
  */
@@ -73,6 +90,15 @@ function Chip({
     >
       {children}
     </button>
+  );
+}
+
+function SectionHeading({ title, note }: { title: string; note: string }) {
+  return (
+    <section className="pt-1">
+      <h2 className="text-lg font-bold tracking-tight text-white">{title}</h2>
+      <p className="pt-1 text-xs leading-relaxed text-white/85">{note}</p>
+    </section>
   );
 }
 
@@ -118,9 +144,65 @@ function OpportunityCard({ item }: { item: Opportunity }) {
   );
 }
 
-export function EarnExplorer() {
-  const { network } = useNetwork();
-  const config = NETWORKS[network];
+/**
+ * One live pool.
+ *
+ * Every row either shows a number the source published or says the value is
+ * unavailable. The base/reward split is broken out on purpose: on these pools
+ * almost all of the headline APY is token incentives rather than interest paid
+ * by borrowers, and those are not the same kind of yield. Rolling them into one
+ * number would be technically accurate and practically misleading.
+ */
+function LiveCard({ item }: { item: LiveOpportunity }) {
+  const readAt = formatFetchedAt(item.fetchedAt);
+  return (
+    <Card edge="mint">
+      <div className="flex items-start justify-between gap-3">
+        <h3 className="min-w-0 text-base font-bold leading-snug text-ink">{item.symbol}</h3>
+        <span className="shrink-0 rounded-full bg-mint-soft px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-mint">
+          Live data
+        </span>
+      </div>
+      <p className="pt-1 text-xs text-muted">
+        {item.chain} mainnet · chain {item.chainId} · {item.stablecoin ? "stablecoin pool" : "not a stablecoin pool"}
+      </p>
+      {item.poolMeta ? <p className="pt-0.5 text-xs text-muted">{item.poolMeta}</p> : null}
+
+      <div className="pt-2">
+        <Row label="APY">{formatLiveApy(item.apy) ?? "APY unavailable"}</Row>
+        <Row label="↳ base interest">{formatLiveApy(item.apyBase) ?? "Unavailable"}</Row>
+        <Row label="↳ token rewards">{formatLiveApy(item.apyReward) ?? "Unavailable"}</Row>
+        <Row label="30-day mean APY">{formatLiveApy(item.apyMean30d) ?? "Unavailable"}</Row>
+        <Row label="TVL">{formatLiveTvl(item.tvlUsd) ?? "TVL unavailable"}</Row>
+        <Row label="Protocol, as the source labels it">{item.project}</Row>
+        <Row label="Source's IL risk flag">{item.ilRisk ?? "Not published"}</Row>
+        <Row label="Source's exposure">{item.exposure ?? "Not published"}</Row>
+      </div>
+
+      {item.underlyingTokens.length > 0 ? (
+        <p className="pt-2 break-all text-xs text-muted">
+          Underlying tokens: <span className="font-mono">{item.underlyingTokens.join(", ")}</span>
+        </p>
+      ) : null}
+      {item.rewardTokens.length > 0 ? (
+        <p className="pt-1 break-all text-xs text-muted">
+          Reward tokens: <span className="font-mono">{item.rewardTokens.join(", ")}</span>
+        </p>
+      ) : null}
+
+      <p className="pt-2 text-xs text-muted">
+        Read from {LIVE_SOURCE.name}
+        {readAt ? ` at ${readAt}` : ""}. Pool id <span className="font-mono">{item.poolId}</span>.
+      </p>
+    </Card>
+  );
+}
+
+export function EarnExplorer({ live }: { live: LiveResult }) {
+  // The Pay network, not a chosen one. Pay settles on Moderato Testnet, so this
+  // is the network this wallet's pathUSD is actually on — and it is labelled as
+  // testnet in the card rather than left for the reader to guess.
+  const config = NETWORKS[PAY_NETWORK];
 
   const { address, isConnected } = useAccount();
   const client = usePublicClient({ chainId: config.chainId });
@@ -178,6 +260,11 @@ export function EarnExplorer() {
     [asset, chain],
   );
 
+  const livePoolIds = useMemo(
+    () => (live.ok ? live.opportunities.map((item) => item.id) : []),
+    [live],
+  );
+
   const balanceText = !mounted
     ? "$0.00"
     : isConnected && balance !== null
@@ -195,17 +282,19 @@ export function EarnExplorer() {
       </section>
 
       <Note tone="plain">
-        Every opportunity below is a discovery entry. FlowPay has no live yield integration on any network yet —
-        there is nothing to deposit into, and an APY you cannot earn is shown as unavailable rather than guessed at.
+        Two different things are below. The live pools are real markets on Tempo mainnet, read from a public source just
+        now. The registry underneath is discovery only — FlowPay has no deposit integration on any network, so nothing
+        there has an APY to show. Pay settles on Tempo Moderato testnet; the live pools are on Tempo mainnet, and they
+        are not the same network or the same money.
       </Note>
 
       {/* Portfolio. Connecting is optional; browsing is not gated on it. */}
       <Card edge="crew">
-        <Label>Your balance</Label>
+        <Label>Your pathUSD on the Pay network</Label>
         <p className="pt-1 text-2xl font-bold text-ink">{balanceText}</p>
 
         <div className="pt-2">
-          <Row label={`pathUSD · ${config.shortLabel}`}>
+          <Row label={`pathUSD · ${config.label}`}>
             {!mounted ? "—" : !isConnected ? "—" : reading ? "Reading…" : balance !== null ? `$${group(formatUsdFixed(balance))}` : "—"}
           </Row>
           <Row label="USDC">Not available</Row>
@@ -226,10 +315,62 @@ export function EarnExplorer() {
         ) : null}
 
         <p className="pt-2 text-xs text-muted">
-          FlowPay reads pathUSD on {config.label} because that is the asset it settles payments in. USDC and USDT
-          balances appear once there is a verified integration on the network that holds them.
+          This reads pathUSD on {config.label} — chain {config.chainId}, the network FlowPay Pay settles on — because
+          that is where the stablecoin this app moves actually sits. It is a testnet, so this balance is not money. The
+          live pools below are on Tempo mainnet, chain 4217, which is a different network entirely.
         </p>
       </Card>
+
+      <SectionHeading
+        title="Live on Tempo mainnet"
+        note={`Stablecoin pools the source reports on Tempo mainnet, read from ${LIVE_SOURCE.name} when this page was built. These are real markets on a real network — and FlowPay still has no way to deposit into any of them.`}
+      />
+
+      {live.ok ? (
+        live.opportunities.length > 0 ? (
+          <>
+            <p className="px-1 text-xs text-white/85">
+              {live.opportunities.length} stablecoin {live.opportunities.length === 1 ? "pool" : "pools"} on Tempo
+              mainnet
+              {live.excludedCount > 0
+                ? ` · ${live.excludedCount} more Tempo ${live.excludedCount === 1 ? "pool is" : "pools are"} not a stablecoin pool and ${live.excludedCount === 1 ? "is" : "are"} not listed`
+                : ""}
+            </p>
+            {live.opportunities.map((item) => (
+              <LiveCard key={item.id} item={item} />
+            ))}
+            <Note tone="plain">{LIVE_DATA_NOTE}</Note>
+            <Note tone="plain">{LIVE_SOURCE_ATTRIBUTION}</Note>
+            <AiAnalysis poolIds={livePoolIds} />
+          </>
+        ) : (
+          <Card edge="holdback">
+            <Label>No stablecoin pools right now</Label>
+            <p className="pt-2 text-sm text-ink">
+              The source answered, and it currently reports no stablecoin pool on Tempo mainnet. That is an empty
+              result from a working source, not a failure — nothing is shown rather than a placeholder.
+            </p>
+          </Card>
+        )
+      ) : (
+        <Card edge="holdback">
+          <Label>The source could not be read</Label>
+          <p className="pt-2 text-sm text-ink">{live.error}</p>
+          <p className="pt-2 text-xs text-muted">
+            FlowPay will not fill this gap with remembered numbers. When the source is reachable again the pools
+            reappear here; until then the honest page is this one. The registry below is unaffected — it never claimed
+            to be live.
+          </p>
+          <p className="pt-2 break-all text-xs">
+            <ExternalLink href={LIVE_SOURCE.endpoint}>{LIVE_SOURCE.endpoint}</ExternalLink>
+          </p>
+        </Card>
+      )}
+
+      <SectionHeading
+        title="Discovery registry"
+        note="Opportunities FlowPay can describe but has not integrated. No protocol, APY, TVL or risk label is filled in, because none of them has been verified — the blanks are the honest answer, not an oversight."
+      />
 
       {/* Network first, then asset — the two axes people actually shop by. */}
       <div className="flex flex-col gap-2">
@@ -256,7 +397,7 @@ export function EarnExplorer() {
       </div>
 
       <p className="px-1 text-xs text-white/85">
-        {shown.length} of {OPPORTUNITIES.length} opportunities · {VERIFIED_COUNT} verified live
+        {shown.length} of {OPPORTUNITIES.length} registry entries · {VERIFIED_COUNT} verified live
       </p>
 
       {shown.length === 0 ? (

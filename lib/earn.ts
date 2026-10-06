@@ -65,8 +65,13 @@ export const CHAINS: Chain[] = [
   {
     key: "tempo",
     label: "Tempo",
-    role: "settlement",
-    note: "Where FlowPay settles payments today. pathUSD is the asset it settles in.",
+    // `discovery`, not `settlement`: this entry is about Tempo MAINNET, where
+    // FlowPay has no integration and moves no money. Pay settles on Moderato
+    // testnet (42431), which is a different network — so a badge reading
+    // "settlement network" over a mainnet entry would be the exact blur this
+    // page is written to avoid.
+    role: "discovery",
+    note: "Tempo mainnet, chain 4217. FlowPay Pay settles on Tempo Moderato testnet, chain 42431 — a different network with a different pathUSD balance.",
   },
   {
     key: "base",
@@ -232,4 +237,4 @@ export const NO_RISK_NOTE =
   "FlowPay assigns a risk label only after it has verified the specific protocol and the specific contract behind an opportunity. Nothing here is verified yet, so risk is unknown rather than low.";
 
 export const NO_INTEGRATION_NOTE =
-  "FlowPay has no live yield integration on any network. Every opportunity below is a discovery entry: there is no contract to deposit into, no position to open and no returns to earn. The APY and TVL fields are blank because the honest value is unknown, not zero.";
+  "FlowPay has no live yield integration on any network. Every entry in this registry is discovery only: there is no contract to deposit into, no position to open and no returns to earn. The APY and TVL fields here are blank because the honest value is unknown, not zero — the live figures at the top of this page come from a public source and are a different claim entirely.";

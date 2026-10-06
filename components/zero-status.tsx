@@ -6,7 +6,7 @@ import { createPublicClient, http } from "viem";
 import { Shell } from "@/components/shell";
 import { Button, Card, ExternalLink, Label, Note, Row, Spinner } from "@/components/ui";
 import { FOOTER_PAY_JOB } from "@/lib/brand";
-import { NETWORKS, explorerTx, type NetworkKey } from "@/lib/networks";
+import { NETWORKS, PAY_NETWORK, explorerTx } from "@/lib/networks";
 import { decodeMemoTransfers } from "@/lib/multicall.mjs";
 import { formatUsdFixed } from "@/lib/zerocon.mjs";
 
@@ -41,15 +41,18 @@ function explainRead(error: unknown): string {
   return text;
 }
 
-export function ZeroStatus({ initialTx, initialNetwork }: { initialTx: string; initialNetwork: NetworkKey }) {
-  const [network, setNetwork] = useState<NetworkKey>(initialNetwork);
+export function ZeroStatus({ initialTx }: { initialTx: string }) {
   const [input, setInput] = useState(initialTx);
   const [busy, setBusy] = useState(false);
   const [outcome, setOutcome] = useState<Outcome | null>(null);
 
+  // Pay settles on Moderato and only there, so this reader looks at Moderato.
+  // It used to offer a Testnet/Mainnet pair; a hash exists on exactly one
+  // network, and offering a second one only invited reading the wrong chain.
+  const network = PAY_NETWORK;
   const config = NETWORKS[network];
 
-  const look = useCallback(async (rawHash: string, net: NetworkKey) => {
+  const look = useCallback(async (rawHash: string) => {
     const hash = rawHash.trim();
     if (!HASH_RE.test(hash)) {
       setOutcome({ ok: false, error: "A transaction hash is 0x followed by 64 hex characters." });
@@ -59,7 +62,7 @@ export function ZeroStatus({ initialTx, initialNetwork }: { initialTx: string; i
     setBusy(true);
     setOutcome(null);
     try {
-      const client = createPublicClient({ transport: http(NETWORKS[net].rpcUrl) });
+      const client = createPublicClient({ transport: http(NETWORKS[network].rpcUrl) });
       const receipt = await client.getTransactionReceipt({ hash: hash as `0x${string}` });
       const entries = decodeMemoTransfers(receipt.logs);
 
@@ -97,8 +100,8 @@ export function ZeroStatus({ initialTx, initialNetwork }: { initialTx: string; i
   // A link into this page can carry the hash, which is what a client would send
   // on: "here is the transaction". Read it without making them paste it again.
   useEffect(() => {
-    if (initialTx) void look(initialTx, initialNetwork);
-  }, [initialTx, initialNetwork, look]);
+    if (initialTx) void look(initialTx);
+  }, [initialTx, look]);
 
   return (
     <Shell back="/zero" footer={FOOTER_PAY_JOB}>
@@ -126,25 +129,15 @@ export function ZeroStatus({ initialTx, initialNetwork }: { initialTx: string; i
             className="w-full rounded-xl border border-line px-3 py-2 text-sm text-ink outline-none focus:border-crew"
           />
 
-          <div className="flex items-center gap-2">
-            {(["testnet", "mainnet"] as NetworkKey[]).map((key) => (
-              <button
-                key={key}
-                type="button"
-                onClick={() => setNetwork(key)}
-                className={`rounded-xl px-3 py-2 text-xs font-semibold ${
-                  key === network ? "bg-ink text-white" : "border border-line bg-white text-muted"
-                }`}
-              >
-                {NETWORKS[key].shortLabel}
-              </button>
-            ))}
-            <span className="text-xs text-muted">a hash only exists on the network it was sent to</span>
+          <div className="pt-2">
+            <Button variant="plain" full disabled={busy} onClick={() => void look(input)}>
+              {busy ? "Reading the chain…" : "Read the transaction"}
+            </Button>
+            <p className="pt-2 text-xs text-muted">
+              This reads {config.label}. A hash only exists on the network it was sent to, and Pay only ever sends on{" "}
+              {config.label}.
+            </p>
           </div>
-
-          <Button variant="plain" full disabled={busy} onClick={() => void look(input, network)}>
-            {busy ? "Reading the chain…" : "Read the transaction"}
-          </Button>
         </div>
       </Card>
 

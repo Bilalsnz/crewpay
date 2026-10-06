@@ -8,8 +8,8 @@ Two products, one site:
 
 | | What it does | Where |
 | --- | --- | --- |
-| **Pay** | Splits one stablecoin payment between up to four people, in one transaction, with no FlowPay contract deployed | `/zero/create` |
-| **Earn** | Explores stablecoin yield opportunities across Tempo, Base, Arbitrum and Ethereum | `/earn` |
+| **Pay** | Splits one stablecoin payment between up to four people, in one transaction, with no FlowPay contract deployed. Tempo Moderato testnet only | `/zero/create` |
+| **Earn** | Live stablecoin pools on Tempo mainnet, read from a public source, plus a discovery registry for Base, Arbitrum and Ethereum | `/earn` |
 
 This is the `zero-contract` branch. **`main` is untouched** and still carries the
 original contract version of CrewPay — see [CONTRACT-VERSION.md](CONTRACT-VERSION.md).
@@ -17,8 +17,10 @@ Nothing on this branch deploys a contract, and nothing here has been run against
 Tempo Mainnet.
 
 - No login, no database, no custodial wallet, no simulated transaction.
-- No backend for Earn: the registry is a TypeScript array.
-- Tempo is the primary chain, with a clearly labelled Testnet/Mainnet switch.
+- **Pay settles on Tempo Moderato testnet and nowhere else.** There is no
+  Testnet/Mainnet switch, because a switch that offers a network the app cannot
+  pay on is a promise the code cannot keep. A wallet connected elsewhere is
+  asked to move, automatically.
 
 ---
 
@@ -82,18 +84,35 @@ is a native precompile.
 
 ## Earn
 
-`/earn` and `/earn/[id]`, backed by [`lib/earn.ts`](lib/earn.ts) — a plain typed
-array. No database, no auth, no paid API, no server route.
+`/earn` and `/earn/[id]`. Earn is two things, kept visibly apart.
 
-**Nothing in it is verified, and that is the current honest state.** FlowPay has
-no deployed yield integration on any network. Every entry is a discovery entry:
-`status: "coming-soon"`, with `protocol`, `apy`, `tvlUsd` and `risk` all `null`.
-The UI renders "Coming soon", "APY unavailable" and "Risk information
-unavailable" rather than substituting a plausible number, and the deposit button
-is disabled with the reason printed underneath it.
+**Live pools on Tempo mainnet.** [`lib/yields.ts`](lib/yields.ts) reads
+[DeFiLlama's public Yields API](https://yields.llama.fi/pools) — no key, no
+account — and shows every pool it reports on Tempo mainnet (chain 4217). Those
+numbers are real and come off the wire: APY broken out into base interest and
+token rewards, TVL, the 30-day mean, the underlying and reward token addresses,
+and the source's own protocol slug. Anything the source does not publish renders
+as "unavailable" rather than as a plausible figure. The page re-reads the source
+every 30 minutes and says when it last did.
 
-The one number read from a chain is the connected wallet's `pathUSD.balanceOf` on
-Tempo — the asset FlowPay actually settles in. Browsing needs no wallet.
+**A discovery registry.** [`lib/earn.ts`](lib/earn.ts) is a plain typed array —
+no database, no auth. Nothing in it is verified, and that is the honest state:
+FlowPay has no deployed yield integration on any network, so every entry is
+`status: "coming-soon"` with `protocol`, `apy`, `tvlUsd` and `risk` all `null`,
+and the deposit button is disabled with the reason printed underneath it.
+
+**They are on different networks and the page says so in every row.** Pay
+settles on Tempo Moderato testnet, chain 42431. The live pools are on Tempo
+mainnet, chain 4217. The balance card reads `pathUSD.balanceOf` on the Pay
+network, because that is where this wallet's pathUSD actually is; the live
+pools are labelled mainnet. The two are never merged into a single "Tempo".
+
+**AI analysis.** The live pools can be sent to Groq for a plain-language read.
+The browser sends only pool ids — the server re-reads the data from the source
+itself before prompting, so the model cannot be handed invented numbers. The
+prompt states that the supplied data is authoritative, forbids any figure,
+protocol or safety claim that is not in it, and requires the answer to say
+FlowPay has not audited anything. See [Secrets](#secrets) for the key.
 
 The `verified` status and its badge exist so the first real integration is one
 row here, not a redesign. Risk labels are FlowPay's own informational
@@ -119,8 +138,19 @@ spells a chain id or a token address a second time.
 Gas on Tempo is paid in pathUSD, not ETH — so nothing here sets `msg.value`, and
 no path waits on a native balance.
 
-**Testnet and mainnet are never mixed.** Every payment link carries its network,
-and opening one moves the whole app to that network.
+**Testnet and mainnet are never mixed, and Pay never touches mainnet.** Every
+payment link carries its network, so a link can never be paid on the wrong one —
+and Pay accepts only Moderato. A link written for mainnet is refused in words
+rather than quietly redirected, because rewriting a link's network would change
+what "2.00" means and where it goes without anyone agreeing to it.
+
+**A wallet connected to another EVM chain is moved automatically.** On connect,
+and again whenever the chain changes, FlowPay asks the wallet to switch to
+Moderato (adding the chain, with `networks.json` as the only source of its id,
+RPC and explorer, if the wallet has never seen it), then re-reads `eth_chainId`
+rather than assuming the request was honoured. There is no "switch it yourself
+and reload" anywhere in the app: a rejected switch leaves an actionable message
+and a retry button.
 
 Tempo Mainnet is configured but **unproven**: no mainnet transaction has ever
 been produced by this codebase, and no mainnet payment should be treated as
@@ -178,12 +208,14 @@ The payment flow is built for an Android browser.
 - **In Chrome on a phone** there is no provider, so the connect sheet hands the
   page to the wallet app through its own deep-link wrapper. Bare `metamask://`
   style schemes do nothing when opened from a page.
-- **The wallet is put on the right Tempo network before every write**, adding the
-  chain if the wallet has never seen it (error 4902).
+- **The wallet is moved to the right Tempo network automatically** — on connect
+  and on every chain change, not only at the moment of paying. The chain is added
+  first if the wallet has never seen it (error 4902), and the wallet's own
+  `eth_chainId` is re-read afterwards instead of trusting the request.
 - **A hash is never treated as a payment.** Every button waits for the receipt,
   every wait is bounded so nothing spins forever, and every failure says which
-  one it was: no wallet connected, provider unavailable, wrong network, cancelled,
-  rejected. The pay button cannot silently do nothing.
+  one it was: no wallet connected, provider unavailable, switch declined,
+  cancelled, rejected. The pay button cannot silently do nothing.
 
 WalletConnect is not wired up. It needs a Reown project id, and importing
 `wagmi/connectors` for it pulls a barrel that reaches an optional peer this build
@@ -197,8 +229,10 @@ does not install. The deep-link flow above is the mobile path that ships.
 app/page.tsx               the home: Pay and Earn
 app/earn/                  the Earn explorer and its detail pages
 app/zero/                  Pay: /zero, /zero/create, /zero/pay, /zero/status, /zero/[network]
+app/api/analyze/           the Groq route — reads GROQ_API_KEY, server only
 lib/brand.ts               every user-visible FlowPay string
-lib/earn.ts                the Earn registry — the whole "backend"
+lib/earn.ts                the Earn discovery registry
+lib/yields.ts              the live Tempo mainnet yield data, read from the source
 lib/zerocon.mjs            link codec, split math — shared by the app and the tests
 lib/multicall.mjs          permit typed-data, Multicall3 builder, log decoder
 networks.json              the one place a chain id or token address is written down
@@ -213,3 +247,10 @@ contracts/CrewPay.sol      the contract version's rules, untouched
 `DEPLOYER_PRIVATE_KEY` lives only in `.env.local`, which is gitignored, and is
 never exposed under a `NEXT_PUBLIC_` name. Nothing on this branch needs it to
 run — there is no deploy step.
+
+`GROQ_API_KEY` is what Earn's AI analysis uses. It is read in
+`app/api/analyze/route.ts`, on the server, and is never prefixed `NEXT_PUBLIC_`
+and never sent to the browser. Without it the app builds and runs normally and
+the analysis panel reports that the service is not configured — it does not
+substitute a canned analysis for a real one. `GROQ_MODEL` optionally overrides
+the model id; it must be one Groq actually serves.

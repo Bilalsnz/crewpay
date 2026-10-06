@@ -6,10 +6,8 @@ import { useEffect, useState, type ReactNode } from "react";
 import { useAccount, useConnect, useDisconnect } from "wagmi";
 import { BRAND } from "@/lib/brand";
 import { shortAddress } from "@/lib/format";
-import { NETWORKS, type NetworkKey } from "@/lib/networks";
 import { deepLink, isMobile, isUserRejection } from "@/lib/wallet";
 import { installedWallets, WALLET_LABEL, WALLET_IDS, type WalletId } from "@/lib/wagmi";
-import { useNetwork } from "./network-provider";
 import { Button, Note } from "./ui";
 
 /**
@@ -33,31 +31,6 @@ function NavPill({ href, match, children }: { href: string; match: string; child
     >
       {children}
     </Link>
-  );
-}
-
-function NetworkSwitch() {
-  const { network, setNetwork } = useNetwork();
-  const keys: NetworkKey[] = ["testnet", "mainnet"];
-  return (
-    <div className="flex rounded-full bg-white/20 p-0.5" role="group" aria-label="Network">
-      {keys.map((key) => {
-        const active = key === network;
-        return (
-          <button
-            key={key}
-            type="button"
-            onClick={() => setNetwork(key)}
-            aria-pressed={active}
-            className={`rounded-full px-3 py-1 text-xs font-bold uppercase tracking-wide transition ${
-              active ? "bg-white text-ink" : "text-white/90"
-            }`}
-          >
-            {NETWORKS[key].shortLabel}
-          </button>
-        );
-      })}
-    </div>
   );
 }
 
@@ -170,9 +143,9 @@ export function AppHeader({ back }: { back?: string }) {
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
 
-  // The brand and the wallet control share the top row; the two products and
-  // the network switch share the second. At 360px that is the only arrangement
-  // where nothing wraps into an unreadable stack.
+  // The brand and the wallet control share the top row; the two products share
+  // the second. At 360px that is the only arrangement where nothing wraps into
+  // an unreadable stack.
   return (
     <header className="mb-5">
       <div className="flex items-center justify-between gap-3">
@@ -191,7 +164,11 @@ export function AppHeader({ back }: { back?: string }) {
         {mounted ? <ConnectControl /> : null}
       </div>
 
-      <nav className="flex items-center justify-between gap-2 pt-3" aria-label={BRAND}>
+      {/* Pay and Earn, and nothing else. The Testnet/Mainnet switch used to sit
+          on the right of this row; it is gone, because Pay settles on Tempo
+          Moderato and only there — a control that offered a second network was
+          offering one the app cannot pay on. */}
+      <nav className="flex items-center gap-2 pt-3" aria-label={BRAND}>
         <div className="flex rounded-full bg-white/20 p-0.5">
           <NavPill href="/zero/create" match="/zero">
             Pay
@@ -200,7 +177,6 @@ export function AppHeader({ back }: { back?: string }) {
             Earn
           </NavPill>
         </div>
-        <NetworkSwitch />
       </nav>
     </header>
   );

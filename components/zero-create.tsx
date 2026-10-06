@@ -3,11 +3,11 @@
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 
-import { useNetwork } from "@/components/network-provider";
+import { TempoGuard } from "@/components/chain-guard";
 import { Shell } from "@/components/shell";
 import { Button, Card, Label, Note, Row } from "@/components/ui";
 import { FOOTER_PAY_CREATE } from "@/lib/brand";
-import { NETWORKS } from "@/lib/networks";
+import { NETWORKS, PAY_NETWORK } from "@/lib/networks";
 import { HOLDBACK_BPS, MAX_CREW, encodeTerms, formatUsdFixed, parseUsd, splitCrew } from "@/lib/zerocon.mjs";
 
 /**
@@ -15,6 +15,11 @@ import { HOLDBACK_BPS, MAX_CREW, encodeTerms, formatUsdFixed, parseUsd, splitCre
  * making a payment is just writing the terms down — and the link IS the record.
  * That is the whole trade of this design: nothing is stored anywhere, so
  * nothing can be edited behind anyone's back, and nothing can be enforced either.
+ *
+ * The network is a constant here, not a piece of state. It used to come from
+ * `useNetwork()`, which meant a value in localStorage could decide which chain
+ * a payment link pointed at. Pay settles on Tempo Moderato and nowhere else, so
+ * the link says so and nothing can change it.
  */
 
 interface Row {
@@ -36,7 +41,7 @@ type Draft =
 
 export function ZeroCreate() {
   const router = useRouter();
-  const { network } = useNetwork();
+  const network = PAY_NETWORK;
   const config = NETWORKS[network];
 
   const [amount, setAmount] = useState("2.00");
@@ -74,6 +79,8 @@ export function ZeroCreate() {
 
   return (
     <Shell footer={FOOTER_PAY_CREATE}>
+      <TempoGuard />
+
       <Card edge="none" className="bg-white/95">
         <Label>Pay</Label>
         <h1 className="pt-1 text-lg font-bold text-ink">Split one payment between your crew</h1>
@@ -81,6 +88,10 @@ export function ZeroCreate() {
           One payment in {config.pathUsdSymbol}, split across up to {MAX_CREW} crew wallets at percentages fixed in
           the link. No contract is deployed — the whole split is one transaction to the Multicall3 deployment Tempo
           already has.
+        </p>
+        <p className="pt-2 text-xs text-muted">
+          Pay settles on {config.label}. That is the only network FlowPay pays from, so there is nothing to choose and
+          nothing to switch by hand — connecting a wallet elsewhere asks it to move here.
         </p>
       </Card>
 

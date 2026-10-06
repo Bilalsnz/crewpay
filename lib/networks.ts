@@ -44,6 +44,28 @@ export function isNetworkKey(value: unknown): value is NetworkKey {
 }
 
 /**
+ * Pay runs on Tempo Moderato Testnet, full stop.
+ *
+ * The Testnet/Mainnet toggle is gone from the Pay UI, because there is only one
+ * network Pay can settle on: no FlowPay contract is deployed anywhere, no
+ * mainnet transaction has ever been produced by this codebase, and a toggle
+ * that offers a second network is a promise the code cannot keep. Mainnet stays
+ * in networks.json because the contract version's screens still read it and
+ * because removing a verified chain's real values would be a lie of a different
+ * kind — it is simply no longer reachable from Pay.
+ *
+ * `NETWORK_KEYS` and `mainnet` remain for those contract screens. Pay code must
+ * use PAY_NETWORK, not `useNetwork()`, so a stale `crewpay.network` value in
+ * localStorage can never move a payment to the wrong chain.
+ */
+export const PAY_NETWORK: NetworkKey = "testnet";
+
+/** The only network Pay will render or sign for. */
+export function isPayNetwork(value: unknown): value is NetworkKey {
+  return value === PAY_NETWORK;
+}
+
+/**
  * Tempo first, and testnet by default. A build can flip the default with
  * NEXT_PUBLIC_DEFAULT_NETWORK, but nothing else about the choice is implicit —
  * every link carries its own network, so a testnet payment link can never be

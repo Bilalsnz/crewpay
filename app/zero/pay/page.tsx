@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import { Shell } from "@/components/shell";
 import { Card, Label, LinkButton, Note } from "@/components/ui";
 import { BRAND, FOOTER_PAY_CREATE } from "@/lib/brand";
-import { DEFAULT_NETWORK, isNetworkKey } from "@/lib/networks";
+import { PAY_NETWORK, isNetworkKey } from "@/lib/networks";
 
 /**
  * `/zero/pay` on its own has nothing to pay.
@@ -25,12 +25,13 @@ export default async function PayRoute({
   const amount = typeof raw.amount === "string" ? raw.amount : "";
   const crew = typeof raw.crew === "string" ? raw.crew : "";
 
-  // Someone landed on the alias with a real link's query still attached. The
-  // network is part of the link, so honour it when it is there and fall back to
-  // the build's default network when it is not.
+  // Someone landed on the alias with a real link's query still attached. A link
+  // that names a network keeps it — including mainnet, which the payment route
+  // then refuses in words rather than quietly paying on a different chain. Only
+  // a link that names nothing falls back to the one network Pay settles on.
   if (amount && crew) {
     const requested = typeof raw.network === "string" ? raw.network : "";
-    const network = isNetworkKey(requested) ? requested : DEFAULT_NETWORK;
+    const network = isNetworkKey(requested) ? requested : PAY_NETWORK;
     const params = new URLSearchParams({ amount, crew });
     redirect(`/zero/${network}?${params.toString()}`);
   }

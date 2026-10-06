@@ -22,10 +22,11 @@ export function NetworkProvider({ children }: { children: React.ReactNode }) {
   // A link, however, names its own network and that always wins. Child effects
   // run before this one, so without the guard below a `/job/mainnet/3` link
   // would set mainnet and then be quietly overwritten by a stored "testnet" —
-  // which is precisely how the two networks get mixed.
+  // which is precisely how the two networks get mixed. `/zero` links name their
+  // network in the path for the same reason and need the same guard.
   useEffect(() => {
     try {
-      if (/^\/job\/(testnet|mainnet)(\/|$)/.test(window.location.pathname)) return;
+      if (/^\/(job|zero)\/(testnet|mainnet)(\/|$)/.test(window.location.pathname)) return;
       const stored = window.localStorage.getItem(STORAGE_KEY);
       if (isNetworkKey(stored)) setNetworkState(stored);
     } catch {

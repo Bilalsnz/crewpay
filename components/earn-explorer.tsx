@@ -60,6 +60,13 @@ const BALANCE_ABI = [
   },
 ] as const;
 
+/**
+ * The source's own page for a single pool, built from the pool id already in
+ * the live data. Only the live cards get one: a registry entry has no verified
+ * pool id, so there is nothing honest to link it to.
+ */
+const DEFILLAMA_POOL_PAGE = "https://defillama.com/yields/pool";
+
 /** `1234567.80` → `1,234,567.80`. Six-decimal amounts get long fast. */
 function group(value: string): string {
   const [whole, fraction] = value.split(".");
@@ -190,6 +197,10 @@ function LiveCard({ item }: { item: LiveOpportunity }) {
       <p className="pt-2 text-xs text-muted">
         Read from {LIVE_SOURCE.name}
         {readAt ? ` at ${readAt}` : ""}. Pool id <span className="font-mono">{item.poolId}</span>.
+      </p>
+
+      <p className="pt-2 text-xs">
+        <ExternalLink href={`${DEFILLAMA_POOL_PAGE}/${item.poolId}`}>View pool ↗</ExternalLink>
       </p>
     </Card>
   );

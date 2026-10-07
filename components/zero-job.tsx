@@ -12,7 +12,7 @@ import { NETWORKS, explorerTx, type NetworkKey } from "@/lib/networks";
 import { wagmiConfig } from "@/lib/wagmi";
 import { PERMIT_TYPES, resolvePermitDomain } from "@/lib/permit";
 import { ensureChain, isUserRejection, providerForConnector, errorMessage, SWITCH_HELP } from "@/lib/wallet";
-import { formatUsdFixed, parseUsd, splitCrew, canonicalTerms } from "@/lib/zerocon.mjs";
+import { PAY_PRESETS, formatUsdFixed, parseUsd, payNowAmount, percentLabel, percentToBps, splitCrew, canonicalTerms } from "@/lib/zerocon.mjs";
 import {
   MULTICALL3, buildSettlement, decodeSettlementLogs, estimateSettlementGas, explainError,
   gasLimitFor, memoFor, reconcile,
@@ -57,15 +57,45 @@ export function ZeroJob({ networkKey, query, amount, crew }: {
   const [error, setError] = useState<string | null>(null);
   const [receipt, setReceipt] = useState<Receipt | null>(null);
 
-  // Same function the tests run against Moderato. The amounts on this page are
-  // the amounts in the calldata, not a second implementation of them.
-  const terms = useMemo(() => {
-    const total = parseUsd(amount) ?? 0n;
-    return { total, split: splitCrew(total, crew.map((m) => m.bps)) };
-  }, [amount, crew]);
+  // The job total comes off the link and does not change: it is what the job is
+  // worth, not what is being paid right now.
+  const jobTotal = useMemo(() => parseUsd(amount) ?? 0n, [amount]);
+
+  // How much of the job is paid now. 100% by default, so a link opened and paid
+  // without touching this control behaves exactly as it did before the control
+  // existed — same permit value, same calldata, same one transaction.
+  const [payPercent, setPayPercent] = useState("100");
+  const chosen = useMemo(() => percentToBps(payPercent), [payPercent]);
+
+  const payNow = useMemo(
+    () => (chosen.ok ? payNowAmount(jobTotal, chosen.bps) : 0n),
+    [chosen, jobTotal],
+  );
+
+  /**
+   * A percentage that rounds down to nothing once it is in token units.
+   * pathUSD's smallest unit is $0.000001, so 1% of a job under a cent is zero —
+   * and a zero-value permit is a signature the chain accepts that moves nothing.
+   * Refusing here is the only honest option; the alternative is a "payment" that
+   * silently did not happen.
+   */
+  const amountError = useMemo(() => {
+    if (!chosen.ok) return chosen.error;
+    if (payNow <= 0n) {
+      return `1% of $${formatUsdFixed(jobTotal)} is smaller than the smallest amount ${config.pathUsdSymbol} can move. Pay a larger share of the job.`;
+    }
+    return null;
+  }, [chosen, payNow, jobTotal, config.pathUsdSymbol]);
+
+  // Same function the tests run against Moderato, applied to the amount being
+  // paid now instead of the job total. The crew percentages, the 90/10 split and
+  // the remainder-to-the-last-member rule are untouched — only the number going
+  // in has changed, so 100% still produces the exact numbers it always did.
+  const split = useMemo(() => splitCrew(payNow, crew.map((m) => m.bps)), [payNow, crew]);
 
   const memo = useMemo(() => memoFor(canonicalTerms(query)), [query]);
-  const crewTotal = terms.split.crewTotal;
+  const crewTotal = split.crewTotal;
+  const remaining = jobTotal - payNow;
 
   /**
    * The wallet is connected but would not give the page a signer for this
@@ -86,6 +116,13 @@ export function ZeroJob({ networkKey, query, amount, crew }: {
     }
     if (!client) {
       setError(`FlowPay could not reach ${config.label}. Check your connection and reload the page.`);
+      return;
+    }
+    // The button is disabled on this too. A chosen percentage that cannot be
+    // paid must never reach the wallet as a prompt: the client would be asked to
+    // sign an amount the page already knows is wrong.
+    if (amountError) {
+      setError(amountError);
       return;
     }
     setError(null);
@@ -134,7 +171,7 @@ export function ZeroJob({ networkKey, query, amount, crew }: {
       // The permit authorises exactly the crew portion. The remaining 10% is
       // never approved and so can never be moved by this transaction.
       const settlement = buildSettlement({
-        client: account, crew, amounts: terms.split.amounts, memo, permitDeadline, signature,
+        client: account, crew, amounts: split.amounts, memo, permitDeadline, signature,
       });
 
       setStage("Making sure the split will go through…");
@@ -161,7 +198,7 @@ export function ZeroJob({ networkKey, query, amount, crew }: {
       // count: every transferFromWithMemo also emits a plain Transfer with the
       // same value, so adding both would report double what actually moved.
       const entries = decodeSettlementLogs(mined.logs, { client: account, memo });
-      const check = reconcile(entries, crew, terms.split.amounts);
+      const check = reconcile(entries, crew, split.amounts);
       setReceipt({ hash, lines: check.lines, ok: check.ok, gasUsed: mined.gasUsed });
       setStage("");
     } catch (caught) {
@@ -173,7 +210,7 @@ export function ZeroJob({ networkKey, query, amount, crew }: {
     } finally {
       setBusy(null);
     }
-  }, [account, client, config, connector, crew, crewTotal, memo, signerHelp, terms.split.amounts]);
+  }, [account, amountError, client, config, connector, crew, crewTotal, memo, signerHelp, split.amounts]);
 
   return (
     <Shell back="/zero" footer={FOOTER_PAY_JOB}>
@@ -185,17 +222,74 @@ export function ZeroJob({ networkKey, query, amount, crew }: {
       <TempoGuard />
 
       <Card edge="none" className="bg-white/95">
-        <Label>Payment</Label>
-        <h1 className="pt-1 text-2xl font-bold text-ink">${formatUsdFixed(terms.total)}</h1>
+        <Label>Job</Label>
+        <h1 className="pt-1 text-2xl font-bold text-ink">${formatUsdFixed(jobTotal)}</h1>
         <p className="pt-1 text-sm text-muted">
           {crew.length} crew {crew.length === 1 ? "wallet" : "wallets"} · {config.label} · paid in {config.pathUsdSymbol}
         </p>
       </Card>
 
+      {/* The job total above is what the job is worth; this is what is actually
+          being paid now. It sits directly above the crew card because that card
+          is a split of this number, not of the job total. */}
+      <Card edge="crew">
+        <Label>Payment amount</Label>
+        <p className="pt-1 text-xs text-muted">
+          How much of the job to pay now. The crew split below applies to this amount, not to the job total.
+        </p>
+
+        <div className="flex flex-wrap gap-2 pt-3">
+          {PAY_PRESETS.map((preset) => {
+            const active = chosen.ok && chosen.bps === preset * 100;
+            return (
+              <button
+                key={preset}
+                type="button"
+                aria-pressed={active}
+                onClick={() => setPayPercent(String(preset))}
+                className={`min-h-[40px] rounded-full px-4 text-sm font-bold transition ${
+                  active ? "bg-crew text-white" : "bg-crew-soft text-crew"
+                }`}
+              >
+                {preset}%
+              </button>
+            );
+          })}
+        </div>
+
+        <div className="flex items-center gap-2 pt-3">
+          <label className="text-sm text-muted" htmlFor="pay-percent">
+            Custom
+          </label>
+          <input
+            id="pay-percent"
+            inputMode="decimal"
+            value={payPercent}
+            onChange={(event) => setPayPercent(event.target.value)}
+            className="w-24 rounded-xl border border-line px-3 py-2 text-sm font-semibold text-ink outline-none focus:border-crew"
+          />
+          <span className="text-sm text-muted">% of the job</span>
+        </div>
+
+        <div className="pt-3">
+          <Row label="Job total">${formatUsdFixed(jobTotal)}</Row>
+          <Row label="Pay now">{chosen.ok ? percentLabel(chosen.bps) : "—"}</Row>
+          <Row label="You pay">${formatUsdFixed(payNow)}</Row>
+          <Row label="Remaining on this job">${formatUsdFixed(remaining)}</Row>
+        </div>
+
+        {amountError ? (
+          <div className="pt-2">
+            <Note tone="warn">{amountError}</Note>
+          </div>
+        ) : null}
+      </Card>
+
       <Card edge="crew">
         <Label>Crew allocations</Label>
         <p className="pt-1 text-xs text-muted">
-          90% of the total is split by these percentages, in the same transaction that takes your {config.pathUsdSymbol}.
+          90% of what you pay now is split by these percentages, in the same transaction that takes your{" "}
+          {config.pathUsdSymbol}.
         </p>
         <div className="divide-y divide-line pt-2">
           {crew.map((member, index) => (
@@ -204,19 +298,22 @@ export function ZeroJob({ networkKey, query, amount, crew }: {
                 <p className="truncate text-sm font-semibold text-ink">{member.address}</p>
                 <p className="text-xs text-muted">{(member.bps / 100).toFixed(2)}%</p>
               </div>
-              <span className="tabular shrink-0 font-semibold text-crew">${formatUsdFixed(terms.split.amounts[index])}</span>
+              <span className="tabular shrink-0 font-semibold text-crew">${formatUsdFixed(split.amounts[index])}</span>
             </div>
           ))}
         </div>
         <div className="pt-2">
-          <Row label="To the crew, now">${formatUsdFixed(terms.split.crewTotal)}</Row>
-          <Row label="Stays with you">${formatUsdFixed(terms.split.retained)}</Row>
+          <Row label="To the crew, now">${formatUsdFixed(split.crewTotal)}</Row>
+          <Row label="Stays with you">${formatUsdFixed(split.retained)}</Row>
         </div>
       </Card>
 
       <Note tone="warn">
-        Paid in full, immediately. The crew receives its share inside the same transaction that takes your{" "}
-        {config.pathUsdSymbol}, and the remaining ${formatUsdFixed(terms.split.retained)} never leaves your wallet.
+        Paid immediately. The crew receives its share inside the same transaction that takes your{" "}
+        {config.pathUsdSymbol}, and the remaining ${formatUsdFixed(split.retained)} never leaves your wallet.
+        {remaining > 0n
+          ? ` The other $${formatUsdFixed(remaining)} of this job is not part of this transaction. This link still says $${formatUsdFixed(jobTotal)}, so it can be paid again for the rest — nothing records how much has already been paid against it, so keep count if you pay in more than one go.`
+          : ""}{" "}
         FlowPay holds nothing after this transaction confirms, so there is nothing left for anyone to release, accept
         or send back.
       </Note>
@@ -226,7 +323,7 @@ export function ZeroJob({ networkKey, query, amount, crew }: {
           <Label>Receipt</Label>
           <p className="pt-1 text-sm text-ink">
             {receipt.ok
-              ? "Every crew wallet received exactly the amount in the link."
+              ? "Every crew wallet received exactly its share of the amount you paid."
               : "The transaction confirmed, but the amounts do not match the link. Do not treat this as paid."}
           </p>
           <div className="divide-y divide-line pt-2">
@@ -269,8 +366,8 @@ export function ZeroJob({ networkKey, query, amount, crew }: {
                 wallet that will pay, then come back and pay in one tap.
               </p>
             ) : (
-              <Button variant="pay" full disabled={Boolean(busy)} onClick={pay}>
-                {busy === "pay" ? "Paying…" : `Pay $${formatUsdFixed(terms.total)}`}
+              <Button variant="pay" full disabled={Boolean(busy) || Boolean(amountError)} onClick={pay}>
+                {busy === "pay" ? "Paying…" : `Pay $${formatUsdFixed(payNow)}`}
               </Button>
             )}
           </div>

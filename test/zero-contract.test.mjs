@@ -17,6 +17,7 @@ import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { NETWORKS, pickNetwork, publicClientFor, walletFor, fundFromFaucet, EXPLORER_TX } from "../scripts/lib.mjs";
 import {
   HOLDBACK_BPS, parseUsd, formatUsd, formatUsdFixed, splitCrew, encodeTerms, decodeTerms, canonicalTerms, isAddress,
+  PAY_PRESETS, percentToBps, percentLabel, payNowAmount,
 } from "../lib/zerocon.mjs";
 import {
   PATHUSD, PATHUSD_ABI, MULTICALL3, MULTICALL3_ABI, permitDomain, memoFor, buildSettlement, gasLimitFor,
@@ -164,6 +165,161 @@ await test("money formatting rounds half-up and never uses a float", () => {
   eq(formatUsdFixed(4999n), "0.00", "just under half a cent rounds down");
   eq(formatUsdFixed(2000000n), "2.00", "whole dollars");
   eq(formatUsdFixed(123456789n), "123.46", "thousands are grouped and the cent rounds up");
+});
+
+/* ──────────────────── 2b. paying part of the job ───────────────────────── */
+
+console.log("\npartial payment");
+
+// $100 job, crew 50/30/20. The 90/10 rule still applies first, to the amount
+// being paid now: the crew portion is 90% of what is paid, not of the job.
+const HUNDRED = parseUsd("100.00");
+const SHARES_532 = [5000, 3000, 2000];
+
+await test("25 / 50 / 75 / 100% of a $100 job produce the amounts a person would write down", () => {
+  const rows = [
+    { pct: 25, pay: "25.00", crewTotal: "22.50", amounts: "11.25 / 6.75 / 4.50", retained: "2.50" },
+    { pct: 50, pay: "50.00", crewTotal: "45.00", amounts: "22.50 / 13.50 / 9.00", retained: "5.00" },
+    { pct: 75, pay: "75.00", crewTotal: "67.50", amounts: "33.75 / 20.25 / 13.50", retained: "7.50" },
+    { pct: 100, pay: "100.00", crewTotal: "90.00", amounts: "45.00 / 27.00 / 18.00", retained: "10.00" },
+  ];
+  for (const row of rows) {
+    const chosen = percentToBps(String(row.pct));
+    assert(chosen.ok, `${row.pct}% was refused: ${chosen.error}`);
+    const payNow = payNowAmount(HUNDRED, chosen.bps);
+    const { crewTotal, retained, amounts } = splitCrew(payNow, SHARES_532);
+    eq(formatUsdFixed(payNow), row.pay, `${row.pct}% — you pay`);
+    eq(formatUsdFixed(crewTotal), row.crewTotal, `${row.pct}% — crew portion (90% of what is paid)`);
+    eq(amounts.map((a) => formatUsdFixed(a)).join(" / "), row.amounts, `${row.pct}% — per crew member`);
+    eq(formatUsdFixed(retained), row.retained, `${row.pct}% — stays with the client (10% of what is paid)`);
+  }
+});
+
+await test("the remaining balance is the job total minus what is paid now", () => {
+  for (const pct of [25, 50, 75, 100]) {
+    const chosen = percentToBps(String(pct));
+    const payNow = payNowAmount(HUNDRED, chosen.bps);
+    const remaining = HUNDRED - payNow;
+    eq(payNow + remaining, HUNDRED, `${pct}%: paid plus remaining is not the job total`);
+    if (pct < 100) assert(remaining > 0n, `${pct}% should leave something owing`);
+    if (pct === 100) eq(remaining, 0n, "100% should leave nothing owing");
+  }
+});
+
+await test("the parts always sum to the amount paid, never to the job total", () => {
+  for (const pct of [1, 7, 25, 33.33, 50, 66.67, 75, 99, 100]) {
+    const chosen = percentToBps(String(pct));
+    assert(chosen.ok, `${pct}% was refused`);
+    const payNow = payNowAmount(HUNDRED, chosen.bps);
+    const { crewTotal, retained, amounts } = splitCrew(payNow, SHARES_532);
+    const sum = amounts.reduce((a, b) => a + b, 0n);
+    eq(sum, crewTotal, `${pct}%: the crew parts do not sum to the crew portion`);
+    eq(crewTotal + retained, payNow, `${pct}%: the crew portion plus the holdback is not what was paid`);
+  }
+});
+
+await test("a payment can never exceed the job total, at any percentage that is allowed", () => {
+  const totals = [parseUsd("0.01"), parseUsd("1.00"), HUNDRED, parseUsd("1234.56"), parseUsd("999999.99")];
+  for (const total of totals) {
+    for (let bps = 1; bps <= 10000; bps += 1) {
+      const payNow = payNowAmount(total, bps);
+      assert(payNow <= total, `${formatUsd(total)} at ${bps}bps paid ${formatUsd(payNow)} — more than the job`);
+      assert(payNow >= 0n, "a negative payment is not possible and must stay that way");
+    }
+  }
+});
+
+await test("0%, more than 100%, and anything that is not a number are refused", () => {
+  for (const bad of ["0", "0.0", "-5", "100.01", "101", "abc", "", "  ", ".", "5e2", "50%%"]) {
+    const chose = percentToBps(bad);
+    assert(!chose.ok, `"${bad}" was accepted as a percentage`);
+  }
+});
+
+await test("1% and 100% are both accepted, and a decimal percentage is honoured", () => {
+  const low = percentToBps("1");
+  assert(low.ok, "1% was refused");
+  eq(low.bps, 100, "1% is 100 bps");
+  const high = percentToBps("100");
+  assert(high.ok, "100% was refused");
+  eq(high.bps, 10000, "100% is 10000 bps");
+  const odd = percentToBps("33.33");
+  assert(odd.ok, "33.33% was refused");
+  eq(odd.bps, 3333, "33.33% is 3333 bps");
+  eq(formatUsdFixed(payNowAmount(HUNDRED, odd.bps)), "33.33", "33.33% of $100");
+});
+
+await test("a percentage that rounds away to nothing is refused rather than signing a zero payment", () => {
+  // $0.000001 — the smallest amount pathUSD can move — at 1% is 0.00000001 of a
+  // dollar, which is zero units. A permit for zero is a signature that moves
+  // nothing, so it must never reach the wallet.
+  const dust = parseUsd("0.000001");
+  eq(payNowAmount(dust, 100), 0n, "this case is supposed to round to zero");
+  // One cent is the smallest job where 1% survives: 1% of 10000 units is 100
+  // units = $0.0001, which is above the smallest unit the token can move.
+  eq(payNowAmount(parseUsd("0.01"), 100), 100n, "1% of a cent must survive as 0.0001");
+});
+
+await test("the label shown is the rate actually charged, not what was typed", () => {
+  eq(percentLabel(10000), "100%", "100%");
+  eq(percentLabel(5000), "50%", "50%");
+  eq(percentLabel(3333), "33.33%", "33.33%");
+  eq(percentLabel(2550), "25.5%", "25.5%");
+});
+
+await test("the presets are the four the page offers", () => {
+  eq(PAY_PRESETS.join(","), "25,50,75,100", "the preset list changed");
+  for (const preset of PAY_PRESETS) {
+    eq(percentToBps(String(preset)).bps, preset * 100, `${preset}% is not ${preset * 100} bps`);
+  }
+});
+
+await test("100% produces the exact same split as before the control existed", () => {
+  // The old call was splitCrew(jobTotal, shares). The new one goes through the
+  // percentage first. At 100% the multiply and divide must cancel exactly, or a
+  // full payment would have quietly changed.
+  const shares = [3333, 3333, 3334];
+  for (const total of [HUNDRED, parseUsd("2.00"), parseUsd("0.07"), parseUsd("1234.57")]) {
+    const before = splitCrew(total, shares);
+    const after = splitCrew(payNowAmount(total, percentToBps("100").bps), shares);
+    eq(after.crewTotal, before.crewTotal, `crew portion changed at ${formatUsd(total)}`);
+    eq(after.retained, before.retained, `holdback changed at ${formatUsd(total)}`);
+    eq(after.amounts.join(","), before.amounts.join(","), `per-member amounts changed at ${formatUsd(total)}`);
+  }
+});
+
+await test("100% produces byte-identical settlement calldata", () => {
+  // The real thing: the same builder the page calls, over the same amounts,
+  // through the percentage route and the direct route. If these differ, a full
+  // payment would send different bytes than it used to.
+  const signature = { v: 27, r: `0x${"11".repeat(32)}`, s: `0x${"22".repeat(32)}` };
+  const crew = SHARES_532.map((bps, i) => ({ address: addr(i + 1), bps }));
+  const memo = memoFor(canonicalTerms("amount=100.00&crew=x"));
+
+  const before = buildSettlement({
+    client: addr(9), crew, amounts: splitCrew(HUNDRED, SHARES_532).amounts, memo, permitDeadline: 2000000000n, signature,
+  });
+  const after = buildSettlement({
+    client: addr(9), crew,
+    amounts: splitCrew(payNowAmount(HUNDRED, percentToBps("100").bps), SHARES_532).amounts,
+    memo, permitDeadline: 2000000000n, signature,
+  });
+  eq(after.data, before.data, "the 100% calldata changed");
+  eq(after.crewTotal, before.crewTotal, "the permit value changed at 100%");
+});
+
+await test("a partial payment authorises the crew portion of that payment, never the job", () => {
+  const crew = SHARES_532.map((bps, i) => ({ address: addr(i + 1), bps }));
+  const chosen = percentToBps("50");
+  const payNow = payNowAmount(HUNDRED, chosen.bps);
+  const split = splitCrew(payNow, SHARES_532);
+  const settlement = buildSettlement({
+    client: addr(9), crew, amounts: split.amounts, memo: memoFor(canonicalTerms("amount=100.00&crew=x")),
+    permitDeadline: 2000000000n, signature: { v: 27, r: `0x${"11".repeat(32)}`, s: `0x${"22".repeat(32)}` },
+  });
+  eq(settlement.crewTotal, parseUsd("45.00"), "the permit authorised the wrong amount");
+  assert(settlement.crewTotal < HUNDRED, "a half payment must not authorise the whole job");
+  eq(settlement.calls.length, 1 + crew.length, "one permit call plus one transfer per crew member");
 });
 
 /* ─────────────────── 3. the payment, on the real chain ─────────────────── */

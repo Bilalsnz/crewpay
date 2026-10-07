@@ -180,7 +180,13 @@ export async function POST(request: Request) {
       body: JSON.stringify({
         model: MODEL,
         temperature: 0.2,
-        max_tokens: 900,
+        // The retired model answered and did nothing else, so 900 tokens was the
+        // whole answer. This one reasons before it writes, and the reasoning
+        // comes out of the same budget: at 900 the reply stopped after two
+        // sections and the risks never arrived. The cap is now the answer plus
+        // that reasoning, with room to spare — the prompt still holds the answer
+        // itself under 320 words.
+        max_tokens: 4096,
         messages: [
           { role: "system", content: systemPrompt(formatFetchedAt(live.fetchedAt) ?? live.fetchedAt) },
           {

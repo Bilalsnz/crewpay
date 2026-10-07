@@ -10,7 +10,6 @@ import { FOOTER_EARN } from "@/lib/brand";
 import {
   ASSETS,
   CHAINS,
-  NO_INTEGRATION_NOTE,
   OPPORTUNITIES,
   VERIFIED_COUNT,
   chainByKey,
@@ -24,9 +23,7 @@ import {
 import { NETWORKS, PAY_NETWORK } from "@/lib/networks";
 import { formatUsdFixed } from "@/lib/zerocon.mjs";
 import {
-  LIVE_DATA_NOTE,
   LIVE_SOURCE,
-  LIVE_SOURCE_ATTRIBUTION,
   formatFetchedAt,
   formatLiveApy,
   formatLiveTvl,
@@ -277,15 +274,13 @@ export function EarnExplorer({ live }: { live: LiveResult }) {
         <h1 className="text-[2rem] font-black leading-tight tracking-tight text-white">Earn</h1>
         <p className="pt-1 text-lg font-bold leading-snug text-white">Put idle stablecoins to work.</p>
         <p className="pt-2 text-sm leading-relaxed text-white/90">
-          Explore stablecoin yield opportunities across supported networks and protocols.
+          Explore live stablecoin yield opportunities on Tempo Mainnet. Data is sourced from DeFiLlama.
         </p>
       </section>
 
       <Note tone="plain">
-        Two different things are below. The live pools are real markets on Tempo mainnet, read from a public source just
-        now. The registry underneath is discovery only — FlowPay has no deposit integration on any network, so nothing
-        there has an APY to show. Pay settles on Tempo Moderato testnet; the live pools are on Tempo mainnet, and they
-        are not the same network or the same money.
+        Pay uses Tempo Moderato Testnet. Earn&apos;s live opportunities are on Tempo Mainnet. For research only — FlowPay
+        does not currently provide deposits into these pools.
       </Note>
 
       {/* Portfolio. Connecting is optional; browsing is not gated on it. */}
@@ -314,17 +309,9 @@ export function EarnExplorer({ live }: { live: LiveResult }) {
           </div>
         ) : null}
 
-        <p className="pt-2 text-xs text-muted">
-          This reads pathUSD on {config.label} — chain {config.chainId}, the network FlowPay Pay settles on — because
-          that is where the stablecoin this app moves actually sits. It is a testnet, so this balance is not money. The
-          live pools below are on Tempo mainnet, chain 4217, which is a different network entirely.
-        </p>
       </Card>
 
-      <SectionHeading
-        title="Live on Tempo mainnet"
-        note={`Stablecoin pools the source reports on Tempo mainnet, read from ${LIVE_SOURCE.name} when this page was built. These are real markets on a real network — and FlowPay still has no way to deposit into any of them.`}
-      />
+      <SectionHeading title="Live on Tempo mainnet" note="Stablecoin pools currently reported on Tempo mainnet." />
 
       {live.ok ? (
         live.opportunities.length > 0 ? (
@@ -339,8 +326,6 @@ export function EarnExplorer({ live }: { live: LiveResult }) {
             {live.opportunities.map((item) => (
               <LiveCard key={item.id} item={item} />
             ))}
-            <Note tone="plain">{LIVE_DATA_NOTE}</Note>
-            <Note tone="plain">{LIVE_SOURCE_ATTRIBUTION}</Note>
             <AiAnalysis poolIds={livePoolIds} />
           </>
         ) : (
@@ -369,7 +354,7 @@ export function EarnExplorer({ live }: { live: LiveResult }) {
 
       <SectionHeading
         title="Discovery registry"
-        note="Opportunities FlowPay can describe but has not integrated. No protocol, APY, TVL or risk label is filled in, because none of them has been verified — the blanks are the honest answer, not an oversight."
+        note="Discovery only. These opportunities are not currently integrated with FlowPay."
       />
 
       {/* Network first, then asset — the two axes people actually shop by. */}
@@ -423,8 +408,6 @@ export function EarnExplorer({ live }: { live: LiveResult }) {
       ) : (
         shown.map((item) => <OpportunityCard key={item.id} item={item} />)
       )}
-
-      <Note tone="plain">{NO_INTEGRATION_NOTE}</Note>
     </Shell>
   );
 }

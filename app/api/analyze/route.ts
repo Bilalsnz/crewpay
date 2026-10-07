@@ -22,8 +22,13 @@ import { LIVE_CHAIN_NAME, LIVE_SOURCE, fetchLiveOpportunities, formatFetchedAt, 
 
 export const runtime = "nodejs";
 
-/** Longest-standing production model on Groq; overridable without a code change. */
-const DEFAULT_MODEL = "llama-3.3-70b-versatile";
+/**
+ * Groq retired `llama-3.3-70b-versatile` on 16 August 2026 — every request for it
+ * now fails with `model_not_found` — and its own deprecation guidance points
+ * production users at GPT-OSS 120B. Overridable without a code change with
+ * `GROQ_MODEL`, which must name a model Groq actually serves.
+ */
+const DEFAULT_MODEL = "openai/gpt-oss-120b";
 
 const GROQ_ENDPOINT = "https://api.groq.com/openai/v1/chat/completions";
 

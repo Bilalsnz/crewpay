@@ -85,13 +85,12 @@ export function ZeroCreate() {
         <Label>Pay</Label>
         <h1 className="pt-1 text-lg font-bold text-ink">Split one payment between your crew</h1>
         <p className="pt-2 text-sm text-muted">
-          One payment in {config.pathUsdSymbol}, split across up to {MAX_CREW} crew wallets at percentages fixed in
-          the link. No contract is deployed — the whole split is one transaction to the Multicall3 deployment Tempo
-          already has.
+          Split one {config.pathUsdSymbol} payment between up to {MAX_CREW} crew wallets. Crew percentages are fixed in
+          the payment link.
         </p>
+        <p className="pt-2 text-sm text-muted">No FlowPay contract is deployed. Settlement uses Tempo&apos;s existing Multicall3.</p>
         <p className="pt-2 text-xs text-muted">
-          Pay settles on {config.label}. That is the only network FlowPay pays from, so there is nothing to choose and
-          nothing to switch by hand — connecting a wallet elsewhere asks it to move here.
+          Pay settles on {config.label}. Your wallet will be prompted to switch automatically if needed.
         </p>
       </Card>
 
@@ -116,10 +115,7 @@ export function ZeroCreate() {
 
       <Card edge="crew">
         <Label>Crew</Label>
-        <p className="pt-1 text-xs text-muted">
-          Percentages split 90% of the amount. They are written into the link, so a crew member can read the link and
-          check their own cut without trusting this page.
-        </p>
+        <p className="pt-1 text-xs text-muted">Percentages split 90% of the amount.</p>
         <div className="flex flex-col gap-3 pt-3">
           {rows.map((row, index) => (
             <div key={index} className="flex flex-col gap-2">
@@ -184,8 +180,7 @@ export function ZeroCreate() {
           </div>
           <p className="pt-2 text-xs text-muted">
             The client keeps the remaining {Number(HOLDBACK_BPS) / 100}% and sends only the crew portion. The crew
-            portion moves in the payment transaction itself — nothing holds it afterwards, because there is no FlowPay
-            contract in this design to hold anything.
+            portion moves in the payment transaction itself — nothing holds it afterwards.
           </p>
         </Card>
       ) : (

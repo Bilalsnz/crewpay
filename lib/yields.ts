@@ -215,10 +215,3 @@ export function formatFetchedAt(iso: string | null): string | null {
   const date = when.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
   return `${time} UTC on ${date}`;
 }
-
-/** Shared by the Earn page and the analysis route so both say the same thing. */
-export const LIVE_DATA_NOTE =
-  "Live data means these numbers were read from the source when this page was built. It does not mean FlowPay has verified a deposit route: there is no FlowPay contract on Tempo mainnet, nothing to deposit into, and no position to open. The source's figures are its own — FlowPay repeats them and does not audit them.";
-
-export const LIVE_SOURCE_ATTRIBUTION =
-  "Protocol names, pool symbols and token addresses below are the source's own strings, reproduced exactly as published. FlowPay has not independently verified them and does not endorse them.";

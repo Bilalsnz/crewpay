@@ -235,6 +235,3 @@ export const RISK_NOTE =
 
 export const NO_RISK_NOTE =
   "FlowPay assigns a risk label only after it has verified the specific protocol and the specific contract behind an opportunity. Nothing here is verified yet, so risk is unknown rather than low.";
-
-export const NO_INTEGRATION_NOTE =
-  "FlowPay has no live yield integration on any network. Every entry in this registry is discovery only: there is no contract to deposit into, no position to open and no returns to earn. The APY and TVL fields here are blank because the honest value is unknown, not zero — the live figures at the top of this page come from a public source and are a different claim entirely.";

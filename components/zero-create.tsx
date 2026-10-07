@@ -8,7 +8,7 @@ import { Shell } from "@/components/shell";
 import { Button, Card, Label, Note, Row } from "@/components/ui";
 import { FOOTER_PAY_CREATE } from "@/lib/brand";
 import { NETWORKS, PAY_NETWORK } from "@/lib/networks";
-import { MAX_CREW, encodeTerms, formatUsdFixed, parseUsd, splitCrew } from "@/lib/zerocon.mjs";
+import { HOLDBACK_BPS, MAX_CREW, encodeTerms, formatUsdFixed, parseUsd, splitCrew } from "@/lib/zerocon.mjs";
 
 /**
  * The Pay create screen. There is no contract to call and nothing to deploy, so
@@ -115,7 +115,7 @@ export function ZeroCreate() {
 
       <Card edge="crew">
         <Label>Crew</Label>
-        <p className="pt-1 text-xs text-muted">Percentages split the whole amount.</p>
+        <p className="pt-1 text-xs text-muted">Percentages split 90% of the amount.</p>
         <div className="flex flex-col gap-3 pt-3">
           {rows.map((row, index) => (
             <div key={index} className="flex flex-col gap-2">
@@ -135,7 +135,7 @@ export function ZeroCreate() {
                   onChange={(event) => setRow(index, { percent: event.target.value })}
                   className="w-24 rounded-xl border border-line px-3 py-2 text-sm text-ink outline-none focus:border-crew"
                 />
-                <span className="text-sm text-muted">% of the amount</span>
+                <span className="text-sm text-muted">% of the crew portion</span>
                 {rows.length > 1 ? (
                   <button
                     type="button"
@@ -175,11 +175,12 @@ export function ZeroCreate() {
             ))}
           </div>
           <div className="pt-2">
-            <Row label="To the crew">${formatUsdFixed(draft.split.crewTotal)}</Row>
+            <Row label="To the crew, now">${formatUsdFixed(draft.split.crewTotal)}</Row>
+            <Row label="Stays with you">${formatUsdFixed(draft.split.retained)}</Row>
           </div>
           <p className="pt-2 text-xs text-muted">
-            Each wallet receives exactly its percentage of what is paid. The money moves in the payment transaction
-            itself, so nothing holds it afterwards.
+            The client keeps the remaining {Number(HOLDBACK_BPS) / 100}% and sends only the crew portion. The crew
+            portion moves in the payment transaction itself — nothing holds it afterwards.
           </p>
         </Card>
       ) : (

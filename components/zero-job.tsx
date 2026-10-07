@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useMemo, useState } from "react";
-import { useAccount, usePublicClient, useSignTypedData, useSwitchChain, useWalletClient } from "wagmi";
+import { useAccount, usePublicClient } from "wagmi";
+import { getWalletClient } from "wagmi/actions";
 
 import { useNetwork } from "@/components/network-provider";
 import { TempoGuard } from "@/components/chain-guard";
@@ -9,6 +10,7 @@ import { Shell, useFollowLinkNetwork } from "@/components/shell";
 import { Button, Card, ExternalLink, Label, Note, Row, Spinner } from "@/components/ui";
 import { FOOTER_PAY_JOB } from "@/lib/brand";
 import { NETWORKS, explorerTx, type NetworkKey } from "@/lib/networks";
+import { wagmiConfig } from "@/lib/wagmi";
 import { PERMIT_TYPES, resolvePermitDomain } from "@/lib/permit";
 import { ensureChain, isUserRejection, providerForConnector, errorMessage, SWITCH_HELP } from "@/lib/wallet";
 import { formatUsdFixed, parseUsd, splitCrew, canonicalTerms } from "@/lib/zerocon.mjs";
@@ -49,9 +51,6 @@ export function ZeroJob({ networkKey, query, amount, crew }: {
 
   const config = NETWORKS[networkKey];
   const { address: account, connector, isConnected } = useAccount();
-  const { data: walletClient } = useWalletClient({ chainId: config.chainId });
-  const { signTypedDataAsync } = useSignTypedData();
-  const { switchChainAsync } = useSwitchChain();
   const client = usePublicClient({ chainId: config.chainId });
 
   const [busy, setBusy] = useState<string | null>(null);
@@ -70,23 +69,18 @@ export function ZeroJob({ networkKey, query, amount, crew }: {
   const crewTotal = terms.split.crewTotal;
 
   /**
-   * The reason the pay button cannot run, in words, or null when it can.
-   *
-   * This exists because the old guard was `if (!walletClient || !client ||
-   * account) return;` — a button that did absolutely nothing when the wallet
-   * was connected but its provider had not come up. A silent return from a
-   * payment button is the worst failure mode this app has: the client taps,
-   * nothing happens, and they cannot tell whether they paid.
+   * The wallet is connected but would not give the page a signer for this
+   * network. This is a real failure, not the network switch merely being a
+   * moment behind React — that case is handled below by taking the signer from
+   * the connector rather than from a hook, so it never reaches this message.
    */
-  const blocked = !isConnected
-    ? "Connect your wallet first, then pay."
-    : !walletClient
-      ? `Your wallet is connected but has not handed FlowPay a signer for ${config.label} yet. If it is showing a network prompt, approve it — FlowPay asks for the switch itself and this button clears as soon as the wallet is on ${config.label}. If no prompt appears, reconnect from the button at the top of this page.`
-      : null;
+  const signerHelp = `Your wallet is connected but did not provide a signer for ${config.label}. If it is showing a network prompt, approve it — otherwise reconnect from the button at the top of this page.`;
 
   const pay = useCallback(async () => {
     // Belt and braces: the button below says this too, and pressing it anyway
-    // must never be a no-op.
+    // must never be a no-op. A silent return from a payment button is the worst
+    // failure mode this app has: the client taps, nothing happens, and they
+    // cannot tell whether they paid.
     if (!account) {
       setError("Connect your wallet first, then pay.");
       return;
@@ -95,25 +89,27 @@ export function ZeroJob({ networkKey, query, amount, crew }: {
       setError(`FlowPay could not reach ${config.label}. Check your connection and reload the page.`);
       return;
     }
-    if (!walletClient) {
-      setError(
-        `Your wallet provider is unavailable in this browser. Open this page inside your wallet app — the Connect button at the top of the page lists the wallets FlowPay supports — or install a wallet and reload.`,
-      );
-      return;
-    }
     setError(null);
     setBusy("pay");
     try {
       setStage("Checking your wallet is on Tempo…");
       const provider = await providerForConnector(connector);
       await ensureChain(provider, config);
-      if (connector && switchChainAsync) {
-        try {
-          await switchChainAsync({ chainId: config.chainId });
-        } catch {
-          /* already on it, or the wallet switched by itself */
-        }
-      }
+
+      // The signer is taken here, from the connector, and not from
+      // `useWalletClient`.
+      //
+      // That hook reads React state, and React state trails the wallet by a
+      // render: immediately after a network switch is approved it can still
+      // hold the pre-switch value, which is `undefined` — because the wallet
+      // was not on this chain before. So a switch that worked perfectly looked
+      // like a wallet that would not sign, and the page asked the client to
+      // start over. `getWalletClient` asks the connector instead, and the
+      // connector asks the provider for its chain id live, so this is correct
+      // the moment `ensureChain` has returned rather than a render later.
+      const wallet = await getWalletClient(wagmiConfig, { chainId: config.chainId }).catch(() => {
+        throw new Error(signerHelp);
+      });
 
       setStage("Waiting for your wallet to sign the permit…");
       // The domain is proved against pathUSD's own DOMAIN_SEPARATOR rather than
@@ -128,11 +124,12 @@ export function ZeroJob({ networkKey, query, amount, crew }: {
       })) as bigint;
       const permitDeadline = BigInt(Math.floor(Date.now() / 1000) + 3600);
 
-      const signature = await signTypedDataAsync({
+      const signature = await wallet.signTypedData({
         domain,
         types: PERMIT_TYPES,
         primaryType: "Permit",
         message: { owner: account, spender: MULTICALL3, value: crewTotal, nonce, deadline: permitDeadline },
+        account,
       });
 
       // The permit authorises exactly the crew portion. The remaining 10% is
@@ -154,8 +151,8 @@ export function ZeroJob({ networkKey, query, amount, crew }: {
       }
 
       setStage("Sending the payment — one transaction…");
-      const hash = await walletClient.sendTransaction({
-        to: settlement.to, data: settlement.data, gas, account, chain: undefined,
+      const hash = await wallet.sendTransaction({
+        to: settlement.to, data: settlement.data, gas, account,
       });
 
       setStage("Waiting for Tempo to confirm…");
@@ -170,18 +167,22 @@ export function ZeroJob({ networkKey, query, amount, crew }: {
       setStage("");
     } catch (caught) {
       if (isUserRejection(caught)) setError("You cancelled in your wallet. Nothing was sent.");
+      else if (errorMessage(caught) === signerHelp) setError(signerHelp);
       else if (errorMessage(caught).includes(SWITCH_HELP)) setError(SWITCH_HELP);
       else setError(explainError(caught));
       setStage("");
     } finally {
       setBusy(null);
     }
-  }, [account, client, config, connector, crew, crewTotal, memo, signTypedDataAsync, switchChainAsync, terms.split.amounts, walletClient]);
+  }, [account, client, config, connector, crew, crewTotal, memo, signerHelp, terms.split.amounts]);
 
   return (
     <Shell back="/zero" footer={FOOTER_PAY_JOB}>
       {/* Asks the wallet to move to Moderato the moment it connects, so the
-          blocked state below is a fallback rather than the normal path. */}
+          client normally never sees the switch happen. `pay` asks for it again
+          itself, because a wallet can be connected on the wrong chain — the
+          guard is a convenience, not the only thing standing between the
+          client and a signed transaction. */}
       <TempoGuard />
 
       <Card edge="none" className="bg-white/95">
@@ -274,11 +275,6 @@ export function ZeroJob({ networkKey, query, amount, crew }: {
               </Button>
             )}
           </div>
-          {blocked && isConnected ? (
-            <div className="pt-3">
-              <Note tone="warn">{blocked}</Note>
-            </div>
-          ) : null}
           {stage ? <div className="pt-3"><Spinner label={stage} /></div> : null}
         </Card>
       )}

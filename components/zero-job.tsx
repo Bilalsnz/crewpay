@@ -304,19 +304,18 @@ export function ZeroJob({ networkKey, query, amount, crew }: {
           ))}
         </div>
         <div className="pt-2">
-          <Row label="To the crew, now">${formatUsdFixed(split.crewTotal)}</Row>
-          <Row label="Held back">$0.00</Row>
+          <Row label="To the crew">${formatUsdFixed(split.crewTotal)}</Row>
         </div>
       </Card>
 
       <Note tone="warn">
         Paid immediately. The whole amount you pay goes to the crew inside the same transaction that takes your{" "}
-        {config.pathUsdSymbol} — nothing is held back and FlowPay keeps no part of it.
+        {config.pathUsdSymbol}, and FlowPay keeps no part of it.
         {remaining > 0n
           ? ` The other $${formatUsdFixed(remaining)} of this job is not part of this transaction. This link still says $${formatUsdFixed(jobTotal)}, so it can be paid again for the rest — nothing records how much has already been paid against it, so keep count if you pay in more than one go.`
           : ""}{" "}
-        FlowPay holds nothing after this transaction confirms, so there is nothing left for anyone to release, accept
-        or send back.
+        Nothing is held after this transaction confirms, so there is nothing left for anyone to release, accept or
+        send back.
       </Note>
 
       {receipt ? (

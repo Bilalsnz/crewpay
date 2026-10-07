@@ -175,12 +175,11 @@ export function ZeroCreate() {
             ))}
           </div>
           <div className="pt-2">
-            <Row label="To the crew, now">${formatUsdFixed(draft.split.crewTotal)}</Row>
-            <Row label="Held back">$0.00</Row>
+            <Row label="To the crew">${formatUsdFixed(draft.split.crewTotal)}</Row>
           </div>
           <p className="pt-2 text-xs text-muted">
-            The client sends the whole amount and nothing is held back, so each wallet receives exactly its percentage
-            of what is paid. It moves in the payment transaction itself — nothing holds it afterwards.
+            Each wallet receives exactly its percentage of what is paid. The money moves in the payment transaction
+            itself, so nothing holds it afterwards.
           </p>
         </Card>
       ) : (

@@ -8,7 +8,7 @@ import { Shell } from "@/components/shell";
 import { Button, Card, Label, Note, Row } from "@/components/ui";
 import { FOOTER_PAY_CREATE } from "@/lib/brand";
 import { NETWORKS, PAY_NETWORK } from "@/lib/networks";
-import { MAX_CREW, encodeTerms, formatUsdFixed, parseUsd, splitCrew } from "@/lib/zerocon.mjs";
+import { MAX_CREW, PAY_PRESETS, encodeTerms, formatUsdFixed, parseUsd, payNowAmount, percentLabel, percentToBps, splitCrew } from "@/lib/zerocon.mjs";
 
 /**
  * The Pay create screen. There is no contract to call and nothing to deploy, so
@@ -35,6 +35,8 @@ type Draft =
   | {
       ok: true;
       total: bigint;
+      payBps: number;
+      payNow: bigint;
       crew: { address: string; bps: number }[];
       split: { crewTotal: bigint; retained: bigint; amounts: bigint[] };
     };
@@ -45,13 +47,26 @@ export function ZeroCreate() {
   const config = NETWORKS[network];
 
   const [amount, setAmount] = useState("2.00");
+  const [payPercent, setPayPercent] = useState("100");
   const [rows, setRows] = useState<Row[]>([{ ...EMPTY }, { ...EMPTY }]);
+
+  // Read once, so the preset buttons and the preview agree on what was typed.
+  const chosenPercent = useMemo(() => percentToBps(payPercent), [payPercent]);
 
   // Everything below is the same code the payment page and the tests run. The
   // preview cannot disagree with what gets signed, because it is one function.
   const draft = useMemo<Draft>(() => {
     const total = parseUsd(amount);
     if (total === null) return { ok: false, error: "Enter an amount greater than zero." };
+
+    // How much of the invoice the client is asked for. Any percentage from 1 to
+    // 100; a link with no percentage on it means the whole invoice.
+    const chosen = percentToBps(payPercent);
+    if (!chosen.ok) return { ok: false, error: chosen.error };
+    const payNow = payNowAmount(total, chosen.bps);
+    if (payNow <= 0n) {
+      return { ok: false, error: `That share of $${formatUsdFixed(total)} is smaller than the smallest amount ${config.pathUsdSymbol} can move.` };
+    }
 
     const filled = rows.filter((r) => r.address.trim() !== "" || r.percent.trim() !== "");
     if (filled.length === 0) return { ok: false, error: "Add at least one crew wallet." };
@@ -68,10 +83,11 @@ export function ZeroCreate() {
     }
     if (sum !== 10000) return { ok: false, error: `The percentages add up to ${(sum / 100).toFixed(2)}%, not 100%.` };
 
-    return { ok: true, total, crew, split: splitCrew(total, crew.map((c) => c.bps)) };
-  }, [amount, rows]);
+    // The crew split divides what the client pays now, not the invoice total.
+    return { ok: true, total, payBps: chosen.bps, payNow, crew, split: splitCrew(payNow, crew.map((c) => c.bps)) };
+  }, [amount, payPercent, rows, config.pathUsdSymbol]);
 
-  const query = draft.ok ? encodeTerms({ total: draft.total, crew: draft.crew }) : null;
+  const query = draft.ok ? encodeTerms({ total: draft.total, crew: draft.crew, payBps: draft.payBps }) : null;
   const href = query ? `/zero/${network}?${query}` : null;
 
   const setRow = (index: number, patch: Partial<Row>) =>
@@ -113,9 +129,62 @@ export function ZeroCreate() {
         </div>
       </Card>
 
+      {/* The only percentage on this page that is about time rather than
+          people: it decides how much of the invoice the client is asked for,
+          and the crew boxes below divide whatever that turns out to be. */}
+      <Card edge="crew">
+        <Label>Client pays now</Label>
+        <p className="pt-1 text-xs text-muted">
+          How much of the invoice the client is asked to pay when they open the link. The crew split below divides this
+          amount, not the invoice total.
+        </p>
+
+        <div className="flex flex-wrap gap-2 pt-3">
+          {PAY_PRESETS.map((preset) => {
+            const active = chosenPercent.ok && chosenPercent.bps === preset * 100;
+            return (
+              <button
+                key={preset}
+                type="button"
+                aria-pressed={active}
+                onClick={() => setPayPercent(String(preset))}
+                className={`min-h-[40px] rounded-full px-4 text-sm font-bold transition ${
+                  active ? "bg-crew text-white" : "bg-crew-soft text-crew"
+                }`}
+              >
+                {preset}%
+              </button>
+            );
+          })}
+        </div>
+
+        <div className="flex items-center gap-2 pt-3">
+          <label className="text-sm text-muted" htmlFor="create-pay-percent">
+            Custom
+          </label>
+          <input
+            id="create-pay-percent"
+            inputMode="decimal"
+            value={payPercent}
+            onChange={(event) => setPayPercent(event.target.value)}
+            className="w-24 rounded-xl border border-line px-3 py-2 text-sm font-semibold text-ink outline-none focus:border-crew"
+          />
+          <span className="text-sm text-muted">% of the invoice</span>
+        </div>
+
+        {draft.ok ? (
+          <div className="pt-3">
+            <Row label="Invoice total">${formatUsdFixed(draft.total)}</Row>
+            <Row label="Client pays now">{percentLabel(draft.payBps)}</Row>
+            <Row label="Amount">${formatUsdFixed(draft.payNow)}</Row>
+            <Row label="Not paid now">${formatUsdFixed(draft.total - draft.payNow)}</Row>
+          </div>
+        ) : null}
+      </Card>
+
       <Card edge="crew">
         <Label>Crew</Label>
-        <p className="pt-1 text-xs text-muted">Percentages split the whole amount.</p>
+        <p className="pt-1 text-xs text-muted">Percentages split what the client pays now.</p>
         <div className="flex flex-col gap-3 pt-3">
           {rows.map((row, index) => (
             <div key={index} className="flex flex-col gap-2">
@@ -179,8 +248,9 @@ export function ZeroCreate() {
             <Row label="Held back">$0.00</Row>
           </div>
           <p className="pt-2 text-xs text-muted">
-            The client sends the whole amount and nothing is held back, so each wallet receives exactly its percentage
-            of what is paid. It moves in the payment transaction itself — nothing holds it afterwards.
+            This is the crew&apos;s share of the ${formatUsdFixed(draft.payNow)} the client pays now. Nothing is held
+            back and nothing is kept — every wallet receives exactly its percentage of what is paid. The rest of the
+            invoice is simply not part of this payment.
           </p>
         </Card>
       ) : (

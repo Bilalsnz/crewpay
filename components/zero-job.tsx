@@ -61,10 +61,10 @@ export function ZeroJob({ networkKey, query, amount, crew }: {
   // worth, not what is being paid right now.
   const jobTotal = useMemo(() => parseUsd(amount) ?? 0n, [amount]);
 
-  // How much of the job is paid now. 100% by default, so a link opened and paid
-  // without touching this control behaves exactly as it did before the control
-  // existed — same permit value, same calldata, same one transaction.
-  const [payPercent, setPayPercent] = useState("100");
+  // How much of the job is paid now. The link carries the percentage the person
+  // who made it chose; a link with none still means the whole job, so every link
+  // written before this setting existed behaves exactly as it did.
+  const [payPercent, setPayPercent] = useState(() => new URLSearchParams(query).get("pay") ?? "100");
   const chosen = useMemo(() => percentToBps(payPercent), [payPercent]);
 
   const payNow = useMemo(

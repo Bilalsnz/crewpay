@@ -168,8 +168,9 @@ export function ZeroJob({ networkKey, query, amount, crew }: {
         account,
       });
 
-      // The permit authorises exactly the crew portion. The remaining 10% is
-      // never approved and so can never be moved by this transaction.
+      // The permit authorises exactly the sum of the transfers that follow it.
+      // Nothing beyond that is approved, so this transaction can never move more
+      // than the amount the client chose to pay.
       const settlement = buildSettlement({
         client: account, crew, amounts: split.amounts, memo, permitDeadline, signature,
       });
@@ -288,7 +289,7 @@ export function ZeroJob({ networkKey, query, amount, crew }: {
       <Card edge="crew">
         <Label>Crew allocations</Label>
         <p className="pt-1 text-xs text-muted">
-          90% of what you pay now is split by these percentages, in the same transaction that takes your{" "}
+          The whole of what you pay now is split by these percentages, in the same transaction that takes your{" "}
           {config.pathUsdSymbol}.
         </p>
         <div className="divide-y divide-line pt-2">
@@ -304,13 +305,13 @@ export function ZeroJob({ networkKey, query, amount, crew }: {
         </div>
         <div className="pt-2">
           <Row label="To the crew, now">${formatUsdFixed(split.crewTotal)}</Row>
-          <Row label="Stays with you">${formatUsdFixed(split.retained)}</Row>
+          <Row label="Held back">$0.00</Row>
         </div>
       </Card>
 
       <Note tone="warn">
-        Paid immediately. The crew receives its share inside the same transaction that takes your{" "}
-        {config.pathUsdSymbol}, and the remaining ${formatUsdFixed(split.retained)} never leaves your wallet.
+        Paid immediately. The whole amount you pay goes to the crew inside the same transaction that takes your{" "}
+        {config.pathUsdSymbol} — nothing is held back and FlowPay keeps no part of it.
         {remaining > 0n
           ? ` The other $${formatUsdFixed(remaining)} of this job is not part of this transaction. This link still says $${formatUsdFixed(jobTotal)}, so it can be paid again for the rest — nothing records how much has already been paid against it, so keep count if you pay in more than one go.`
           : ""}{" "}

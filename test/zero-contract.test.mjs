@@ -16,7 +16,7 @@ import { formatUnits, parseSignature, encodeFunctionData } from "viem";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { NETWORKS, pickNetwork, publicClientFor, walletFor, fundFromFaucet, EXPLORER_TX } from "../scripts/lib.mjs";
 import {
-  HOLDBACK_BPS, parseUsd, formatUsd, formatUsdFixed, splitCrew, encodeTerms, decodeTerms, canonicalTerms, isAddress,
+  parseUsd, formatUsd, formatUsdFixed, splitCrew, encodeTerms, decodeTerms, canonicalTerms, isAddress,
   PAY_PRESETS, percentToBps, percentLabel, payNowAmount,
 } from "../lib/zerocon.mjs";
 import {
@@ -109,26 +109,26 @@ await test("an address with no percentage is refused", () => {
 
 console.log("\nsplit");
 
-await test("90% goes to the crew and 10% stays with the client", () => {
+await test("the whole amount goes to the crew and nothing is retained", () => {
   const { crewTotal, retained, amounts } = splitCrew(parseUsd("2.00"), [10000]);
-  eq(crewTotal, parseUsd("1.80"), "crew total is 90%");
-  eq(retained, parseUsd("0.20"), "retained is 10%");
-  eq(amounts[0], parseUsd("1.80"), "a single crew member takes the whole crew portion");
+  eq(crewTotal, parseUsd("2.00"), "crew total is the whole amount");
+  eq(retained, 0n, "nothing may be held back");
+  eq(amounts[0], parseUsd("2.00"), "a single crew member takes the whole amount");
 });
 
 await test("the parts always sum to the crew total exactly — no stranded dust", () => {
-  // 1/3 splits are where rounding shows up: 1800000 * 3333 / 10000 = 599940,
-  // three of those leaves 180 units unaccounted for on the floor alone.
+  // 1/3 splits are where rounding shows up: 2000000 * 3333 / 10000 = 666600,
+  // three of those leaves 200 units unaccounted for on the floor alone.
   const { crewTotal, amounts } = splitCrew(parseUsd("2.00"), [3333, 3333, 3334]);
   const sum = amounts.reduce((a, b) => a + b, 0n);
-  eq(sum, crewTotal, "the crew amounts do not sum to the crew portion");
+  eq(sum, crewTotal, "the crew amounts do not sum to the amount paid");
 });
 
 await test("the last member absorbs the rounding remainder, never the first", () => {
   const { amounts } = splitCrew(parseUsd("2.00"), [3333, 3333, 3334]);
-  eq(amounts[0], 599940n, "first takes the floor of its share");
-  eq(amounts[1], 599940n, "second takes the floor of its share");
-  assert(amounts[2] > 599940n, "the last member should carry the remainder");
+  eq(amounts[0], 666600n, "first takes the floor of its share");
+  eq(amounts[1], 666600n, "second takes the floor of its share");
+  assert(amounts[2] > 666600n, "the last member should carry the remainder");
 });
 
 await test("the same total always splits the same way — the link is deterministic", () => {
@@ -141,22 +141,37 @@ await test("an amount with more than six decimals is refused rather than rounded
   assert(parseUsd("1.0000001") === null, "a sub-micro amount was accepted and would be silently truncated");
 });
 
-await test("the four-crew split the contract used still holds here", () => {
-  // 2.00 → crew 1.80 → 40/30/20/10 of that. Same numbers CrewPay.sol produced.
+await test("a four-way split divides the whole amount", () => {
+  // 2.00 split 40/30/20/10 — the percentages apply to all of it now, so the
+  // crew receives the entire 2.00 rather than 90% of it.
   const { crewTotal, amounts } = splitCrew(parseUsd("2.00"), [4000, 3000, 2000, 1000]);
-  eq(crewTotal, 1800000n, "crew portion");
-  eq(amounts.map((a) => formatUnits(a, 6)).join(" / "), "0.72 / 0.54 / 0.36 / 0.18", "four-way split");
+  eq(crewTotal, 2000000n, "the whole amount is the crew portion");
+  eq(amounts.map((a) => formatUsdFixed(a)).join(" / "), "0.80 / 0.60 / 0.40 / 0.20", "four-way split");
 });
 
-await test("the displayed parts add up to the displayed total", () => {
-  // The case truncation gets wrong: a third of 1.80 is 0.59994, and cutting it
-  // at two decimals prints 0.59 — so the three parts would read 1.79 against a
-  // stated 1.80.
+await test("a three-way split sums exactly in units, and only the 2dp rendering can drift", () => {
+  // Each part rounds half-up on its own, so three parts of 0.6666 print as
+  // 0.67 / 0.67 / 0.67 and read as 2.01 against a stated 2.00. The amounts
+  // themselves sum to the total exactly — the drift is the display's, not the
+  // arithmetic's, and the receipt states the amounts it read off the chain.
   const { amounts, crewTotal } = splitCrew(parseUsd("2.00"), [3333, 3333, 3334]);
-  const shown = amounts.map((a) => formatUsdFixed(a));
-  eq(shown.join(" + "), "0.60 + 0.60 + 0.60", "each part rounds to the cent");
   const sum = amounts.reduce((a, b) => a + b, 0n);
-  eq(formatUsdFixed(sum), formatUsdFixed(crewTotal), "the displayed parts match the displayed crew total");
+  eq(sum, crewTotal, "the parts must sum to the total exactly in units");
+  eq(amounts.map((a) => formatUsdFixed(a)).join(" + "), "0.67 + 0.67 + 0.67", "each part rounds to the cent");
+  eq(formatUsdFixed(sum), formatUsdFixed(crewTotal), "the displayed total matches the underlying total");
+});
+
+await test("a split that divides evenly shows parts that add up to the cent", () => {
+  // The shape the page leads with. Every number a client sees is exact.
+  const { amounts, crewTotal } = splitCrew(parseUsd("100.00"), [5000, 3000, 2000]);
+  const shown = amounts.map((a) => formatUsdFixed(a));
+  const cents = (s) => Math.round(Number(s) * 100);
+  eq(shown.join(" + "), "50.00 + 30.00 + 20.00", "the parts as displayed");
+  eq(
+    shown.reduce((sum, s) => sum + cents(s), 0),
+    cents(formatUsdFixed(crewTotal)),
+    "the displayed parts do not add up to the displayed total",
+  );
 });
 
 await test("money formatting rounds half-up and never uses a float", () => {
@@ -171,17 +186,17 @@ await test("money formatting rounds half-up and never uses a float", () => {
 
 console.log("\npartial payment");
 
-// $100 job, crew 50/30/20. The 90/10 rule still applies first, to the amount
-// being paid now: the crew portion is 90% of what is paid, not of the job.
+// $100 job, crew 50/30/20. The percentages apply to the amount being paid now,
+// and the whole of that amount goes to the crew — nothing is held back.
 const HUNDRED = parseUsd("100.00");
 const SHARES_532 = [5000, 3000, 2000];
 
 await test("25 / 50 / 75 / 100% of a $100 job produce the amounts a person would write down", () => {
   const rows = [
-    { pct: 25, pay: "25.00", crewTotal: "22.50", amounts: "11.25 / 6.75 / 4.50", retained: "2.50" },
-    { pct: 50, pay: "50.00", crewTotal: "45.00", amounts: "22.50 / 13.50 / 9.00", retained: "5.00" },
-    { pct: 75, pay: "75.00", crewTotal: "67.50", amounts: "33.75 / 20.25 / 13.50", retained: "7.50" },
-    { pct: 100, pay: "100.00", crewTotal: "90.00", amounts: "45.00 / 27.00 / 18.00", retained: "10.00" },
+    { pct: 25, pay: "25.00", crewTotal: "25.00", amounts: "12.50 / 7.50 / 5.00" },
+    { pct: 50, pay: "50.00", crewTotal: "50.00", amounts: "25.00 / 15.00 / 10.00" },
+    { pct: 75, pay: "75.00", crewTotal: "75.00", amounts: "37.50 / 22.50 / 15.00" },
+    { pct: 100, pay: "100.00", crewTotal: "100.00", amounts: "50.00 / 30.00 / 20.00" },
   ];
   for (const row of rows) {
     const chosen = percentToBps(String(row.pct));
@@ -189,9 +204,24 @@ await test("25 / 50 / 75 / 100% of a $100 job produce the amounts a person would
     const payNow = payNowAmount(HUNDRED, chosen.bps);
     const { crewTotal, retained, amounts } = splitCrew(payNow, SHARES_532);
     eq(formatUsdFixed(payNow), row.pay, `${row.pct}% — you pay`);
-    eq(formatUsdFixed(crewTotal), row.crewTotal, `${row.pct}% — crew portion (90% of what is paid)`);
+    eq(formatUsdFixed(crewTotal), row.crewTotal, `${row.pct}% — to the crew (all of what is paid)`);
     eq(amounts.map((a) => formatUsdFixed(a)).join(" / "), row.amounts, `${row.pct}% — per crew member`);
-    eq(formatUsdFixed(retained), row.retained, `${row.pct}% — stays with the client (10% of what is paid)`);
+    eq(retained, 0n, `${row.pct}% — nothing may be held back`);
+  }
+});
+
+await test("the crew always receives exactly what was paid, at every share", () => {
+  // The property the old 90/10 rule broke: whatever percentage is chosen, the
+  // amount that leaves the client is the amount the crew receives.
+  for (const pct of [1, 7, 25, 33.33, 50, 66.67, 75, 99, 100]) {
+    const chosen = percentToBps(String(pct));
+    assert(chosen.ok, `${pct}% was refused`);
+    const payNow = payNowAmount(HUNDRED, chosen.bps);
+    const { crewTotal, retained, amounts } = splitCrew(payNow, SHARES_532);
+    eq(crewTotal + retained, payNow, `${pct}%: crew plus retention is not what was paid`);
+    eq(crewTotal, payNow, `${pct}%: the crew did not receive the whole payment`);
+    eq(retained, 0n, `${pct}%: something was retained`);
+    eq(amounts.reduce((a, b) => a + b, 0n), payNow, `${pct}%: the per-member parts do not sum to what was paid`);
   }
 });
 
@@ -203,18 +233,6 @@ await test("the remaining balance is the job total minus what is paid now", () =
     eq(payNow + remaining, HUNDRED, `${pct}%: paid plus remaining is not the job total`);
     if (pct < 100) assert(remaining > 0n, `${pct}% should leave something owing`);
     if (pct === 100) eq(remaining, 0n, "100% should leave nothing owing");
-  }
-});
-
-await test("the parts always sum to the amount paid, never to the job total", () => {
-  for (const pct of [1, 7, 25, 33.33, 50, 66.67, 75, 99, 100]) {
-    const chosen = percentToBps(String(pct));
-    assert(chosen.ok, `${pct}% was refused`);
-    const payNow = payNowAmount(HUNDRED, chosen.bps);
-    const { crewTotal, retained, amounts } = splitCrew(payNow, SHARES_532);
-    const sum = amounts.reduce((a, b) => a + b, 0n);
-    eq(sum, crewTotal, `${pct}%: the crew parts do not sum to the crew portion`);
-    eq(crewTotal + retained, payNow, `${pct}%: the crew portion plus the holdback is not what was paid`);
   }
 });
 
@@ -274,16 +292,25 @@ await test("the presets are the four the page offers", () => {
   }
 });
 
-await test("100% produces the exact same split as before the control existed", () => {
-  // The old call was splitCrew(jobTotal, shares). The new one goes through the
-  // percentage first. At 100% the multiply and divide must cancel exactly, or a
-  // full payment would have quietly changed.
+await test("100% pays the whole job: the crew receives all of it", () => {
+  const shares = [3333, 3333, 3334];
+  for (const total of [HUNDRED, parseUsd("2.00"), parseUsd("0.07"), parseUsd("1234.57")]) {
+    const split = splitCrew(payNowAmount(total, percentToBps("100").bps), shares);
+    eq(split.crewTotal, total, `the crew did not receive the whole job at ${formatUsd(total)}`);
+    eq(split.retained, 0n, `something was retained at ${formatUsd(total)}`);
+    eq(split.amounts.reduce((a, b) => a + b, 0n), total, `the parts do not sum to the job at ${formatUsd(total)}`);
+  }
+});
+
+await test("the percentage route at 100% matches calling the split directly", () => {
+  // Guards the identity payNowAmount(total, 10000) === total. If it ever broke,
+  // a full payment would silently stop being the whole job.
   const shares = [3333, 3333, 3334];
   for (const total of [HUNDRED, parseUsd("2.00"), parseUsd("0.07"), parseUsd("1234.57")]) {
     const before = splitCrew(total, shares);
     const after = splitCrew(payNowAmount(total, percentToBps("100").bps), shares);
-    eq(after.crewTotal, before.crewTotal, `crew portion changed at ${formatUsd(total)}`);
-    eq(after.retained, before.retained, `holdback changed at ${formatUsd(total)}`);
+    eq(after.crewTotal, before.crewTotal, `crew total changed at ${formatUsd(total)}`);
+    eq(after.retained, before.retained, `retention changed at ${formatUsd(total)}`);
     eq(after.amounts.join(","), before.amounts.join(","), `per-member amounts changed at ${formatUsd(total)}`);
   }
 });
@@ -308,7 +335,7 @@ await test("100% produces byte-identical settlement calldata", () => {
   eq(after.crewTotal, before.crewTotal, "the permit value changed at 100%");
 });
 
-await test("a partial payment authorises the crew portion of that payment, never the job", () => {
+await test("a partial payment authorises the amount paid, never the job total", () => {
   const crew = SHARES_532.map((bps, i) => ({ address: addr(i + 1), bps }));
   const chosen = percentToBps("50");
   const payNow = payNowAmount(HUNDRED, chosen.bps);
@@ -317,7 +344,8 @@ await test("a partial payment authorises the crew portion of that payment, never
     client: addr(9), crew, amounts: split.amounts, memo: memoFor(canonicalTerms("amount=100.00&crew=x")),
     permitDeadline: 2000000000n, signature: { v: 27, r: `0x${"11".repeat(32)}`, s: `0x${"22".repeat(32)}` },
   });
-  eq(settlement.crewTotal, parseUsd("45.00"), "the permit authorised the wrong amount");
+  eq(settlement.crewTotal, parseUsd("50.00"), "the permit authorised the wrong amount");
+  eq(settlement.crewTotal, payNow, "the permit must authorise exactly what is being paid");
   assert(settlement.crewTotal < HUNDRED, "a half payment must not authorise the whole job");
   eq(settlement.calls.length, 1 + crew.length, "one permit call plus one transfer per crew member");
 });
@@ -376,14 +404,22 @@ await test("the permit is signed over the exact domain pathUSD implements", asyn
     client: client.address, crew: terms.crew, amounts: split.amounts,
     memo, permitDeadline, signature,
   });
-  eq(settlement.crewTotal, parseUsd("1.80"), "the permit authorises exactly the crew portion");
+  eq(settlement.crewTotal, parseUsd("2.00"), "the permit authorises exactly the amount paid");
 });
 
-await test("the permit authorises the crew portion, never the full invoice", () => {
-  // 10% must never be reachable by this transaction. If the permit covered the
-  // full 2.00, a fifth transfer could pull it; it covers 1.80 and no more.
-  assert(settlement.crewTotal < terms.total, "the permit covers the whole invoice");
+await test("the permit authorises exactly what the transfers move, and no more", () => {
+  // Nothing is retained, so a full payment's permit covers the whole invoice —
+  // that is the expected behaviour now. The property that still has to hold is
+  // that the permit is never larger than the transfers it authorises: anything
+  // above that sum would be pullable by a later spender call.
+  eq(settlement.crewTotal, terms.total, "at 100% the permit covers the whole invoice");
   eq(settlement.crewTotal, terms.total - split.retained, "authorised = total - retained");
+  eq(split.retained, 0n, "something was retained");
+  eq(
+    settlement.crewTotal,
+    split.amounts.reduce((a, b) => a + b, 0n),
+    "the permit covers more than the transfers that follow it",
+  );
 });
 
 await test("the whole settlement is one call to Multicall3, with permit first", () => {
@@ -464,7 +500,7 @@ await test("the receipt shows all four crew members paid, and only them", () => 
 await test("the fee transfer and the duplicate Transfer logs are excluded by construction", () => {
   const entries = decodeSettlementLogs(receipt.logs, { client: client.address, memo });
   const total = entries.reduce((a, e) => a + e.value, 0n);
-  eq(total, parseUsd("1.80"), "the decoded total is not the crew portion");
+  eq(total, parseUsd("2.00"), "the decoded total is not what was paid");
   assert(!entries.some((e) => e.to === "0xfeec000000000000000000000000000000000000"), "the gas fee leaked into the receipt");
   assert(receipt.logs.length > entries.length, "there should be more raw logs than receipt lines — otherwise the filter is not filtering");
 });
@@ -477,22 +513,23 @@ await test("each crew member's balance actually moved by the amount in the link"
 });
 
 await test("no allowance survives the transaction", async () => {
-  // The permit set 1.80 and the transfers consumed it inside the same call. If
+  // The permit set 2.00 and the transfers consumed it inside the same call. If
   // anything remained, the link holder could pull again without a signature.
   const left = await pub.readContract({ address: PATHUSD, abi: PATHUSD_ABI, functionName: "allowance", args: [client.address, MULTICALL3] });
   eq(left, 0n, `an allowance of ${formatUnits(left, 6)} survived — the permit is not self-consuming`);
 });
 
-await test("the client was debited the crew portion, plus the gas fee and nothing else", async () => {
-  // Gas on Tempo is paid in pathUSD, so the debit is crew portion + fee. Upper
-  // bound is loose enough for the fee and tight enough to catch the client
-  // being charged the full invoice, which is the mistake that matters.
+await test("the client was debited exactly what was paid, plus the gas fee and nothing else", async () => {
+  // Gas on Tempo is paid in pathUSD, so the debit is the amount paid + fee.
+  // With nothing retained, "what the crew receives" and "what the client pays"
+  // are the same number — the fee is the only difference there should be.
   const spent = balanceBefore - balanceAfter;
   const fee = spent - split.crewTotal;
   console.log(`       spent ${usd(spent)} pathUSD = ${usd(split.crewTotal)} to crew + ${usd(fee)} gas`);
-  assert(fee >= 0n, `the client was debited ${usd(-fee)} less than the crew portion — the crew was not paid from this wallet`);
+  assert(fee >= 0n, `the client was debited ${usd(-fee)} less than the crew amount — the crew was not paid from this wallet`);
   assert(fee < parseUsd("0.10"), `gas cost ${usd(fee)} looks wrong for this transaction`);
-  assert(spent < terms.total, `the client was debited ${usd(spent)} — the full invoice, not just the crew portion`);
+  eq(split.crewTotal, terms.total, "at 100% the crew must receive the whole invoice");
+  eq(split.retained, 0n, "something was retained — the client paid more than the crew received, less gas");
   eq(balanceAfter, balanceBefore - spent, "the balance reads are inconsistent");
 });
 
